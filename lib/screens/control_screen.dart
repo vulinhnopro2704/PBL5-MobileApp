@@ -22,6 +22,10 @@ class _ControlScreenState extends State<ControlScreen>
   final WebSocketService _webSocketService = WebSocketService();
   final ApiService _apiService = ApiService();
 
+  // Stream subscriptions to be managed
+  StreamSubscription? _messageSubscription;
+  StreamSubscription? _connectionStatusSubscription;
+
   String _status = 'Disconnected';
   bool _isConnecting = false;
   late AnimationController _connectionAnimController;
@@ -48,35 +52,46 @@ class _ControlScreenState extends State<ControlScreen>
 
     _connectWebSocket();
 
-    // Listen for WebSocket messages
-    _webSocketService.messageStream.listen((message) {
+    // Listen for WebSocket messages with proper subscription management
+    _messageSubscription = _webSocketService.messageStream.listen((message) {
       LogService.info('Message from server: $message');
       // Update UI based on message if needed
-      setState(() {
-        // Example: parse status message
-        if (message is String && message.contains('status')) {
-          _status = 'Connected: $message';
-        }
-      });
+      if (mounted) {
+        // Check if the widget is still in the tree
+        setState(() {
+          // Example: parse status message
+          if (message is String && message.contains('status')) {
+            _status = 'Connected: $message';
+          }
+        });
+      }
     });
 
-    // Listen for connection status changes
-    _webSocketService.connectionStatusStream.listen((isConnected) {
-      setState(() {
-        if (isConnected) {
-          _status = 'Connected';
-          _isConnecting = false;
-          _connectionAnimController.stop();
-        } else {
-          _status = 'Disconnected';
-          _stopContinuousCommand();
-        }
-      });
-    });
+    // Listen for connection status changes with proper subscription management
+    _connectionStatusSubscription = _webSocketService.connectionStatusStream
+        .listen((isConnected) {
+          if (mounted) {
+            // Check if the widget is still in the tree
+            setState(() {
+              if (isConnected) {
+                _status = 'Connected';
+                _isConnecting = false;
+                _connectionAnimController.stop();
+              } else {
+                _status = 'Disconnected';
+                _stopContinuousCommand();
+              }
+            });
+          }
+        });
   }
 
   @override
   void dispose() {
+    // Cancel stream subscriptions
+    _messageSubscription?.cancel();
+    _connectionStatusSubscription?.cancel();
+
     _webSocketService.dispose();
     _connectionAnimController.dispose();
     _stopContinuousCommand();
@@ -608,107 +623,112 @@ class _ControlScreenState extends State<ControlScreen>
                 // Control buttons
                 if (!_showCamera)
                   Expanded(
-                    child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          // Forward button
-                          GestureDetector(
-                            onLongPress:
-                                () => _startContinuousCommand('forward'),
-                            onLongPressEnd: (_) => _stopContinuousCommand(),
-                            child: ControlButton(
-                              icon: Icons.arrow_upward,
-                              label: 'Forward',
-                              onPressed: () => _sendCommand('forward'),
-                              color: AppTheme.forwardButtonColor,
-                              isPressed: _activeCommand == 'forward',
+                    child: SingleChildScrollView(
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const SizedBox(height: 12),
+                            // Forward button
+                            GestureDetector(
+                              onLongPress:
+                                  () => _startContinuousCommand('forward'),
+                              onLongPressEnd: (_) => _stopContinuousCommand(),
+                              child: ControlButton(
+                                icon: Icons.arrow_upward,
+                                label: 'Forward',
+                                onPressed: () => _sendCommand('forward'),
+                                color: AppTheme.forwardButtonColor,
+                                isPressed: _activeCommand == 'forward',
+                              ),
                             ),
-                          ),
 
-                          const SizedBox(height: 16),
+                            const SizedBox(height: 16),
 
-                          // Left, Stop, Right buttons in a row
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              GestureDetector(
-                                onLongPress:
-                                    () => _startContinuousCommand('left'),
-                                onLongPressEnd: (_) => _stopContinuousCommand(),
-                                child: ControlButton(
-                                  icon: Icons.arrow_back,
-                                  label: 'Left',
-                                  onPressed: () => _sendCommand('left'),
-                                  color: AppTheme.leftButtonColor,
-                                  isPressed: _activeCommand == 'left',
+                            // Left, Stop, Right buttons in a row
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                GestureDetector(
+                                  onLongPress:
+                                      () => _startContinuousCommand('left'),
+                                  onLongPressEnd:
+                                      (_) => _stopContinuousCommand(),
+                                  child: ControlButton(
+                                    icon: Icons.arrow_back,
+                                    label: 'Left',
+                                    onPressed: () => _sendCommand('left'),
+                                    color: AppTheme.leftButtonColor,
+                                    isPressed: _activeCommand == 'left',
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(width: 16),
-                              ControlButton(
-                                icon: Icons.stop_circle,
-                                label: 'Stop',
-                                onPressed: () => _sendCommand('stop'),
-                                color: AppTheme.stopButtonColor,
-                                isPressed: false,
-                                isGlowing: true,
-                              ),
-                              const SizedBox(width: 16),
-                              GestureDetector(
-                                onLongPress:
-                                    () => _startContinuousCommand('right'),
-                                onLongPressEnd: (_) => _stopContinuousCommand(),
-                                child: ControlButton(
-                                  icon: Icons.arrow_forward,
-                                  label: 'Right',
-                                  onPressed: () => _sendCommand('right'),
-                                  color: AppTheme.rightButtonColor,
-                                  isPressed: _activeCommand == 'right',
+                                const SizedBox(width: 16),
+                                ControlButton(
+                                  icon: Icons.stop_circle,
+                                  label: 'Stop',
+                                  onPressed: () => _sendCommand('stop'),
+                                  color: AppTheme.stopButtonColor,
+                                  isPressed: false,
+                                  isGlowing: true,
                                 ),
-                              ),
-                            ],
-                          ),
-
-                          const SizedBox(height: 16),
-
-                          // Backward button
-                          GestureDetector(
-                            onLongPress:
-                                () => _startContinuousCommand('backward'),
-                            onLongPressEnd: (_) => _stopContinuousCommand(),
-                            child: ControlButton(
-                              icon: Icons.arrow_downward,
-                              label: 'Backward',
-                              onPressed: () => _sendCommand('backward'),
-                              color: AppTheme.backwardButtonColor,
-                              isPressed: _activeCommand == 'backward',
+                                const SizedBox(width: 16),
+                                GestureDetector(
+                                  onLongPress:
+                                      () => _startContinuousCommand('right'),
+                                  onLongPressEnd:
+                                      (_) => _stopContinuousCommand(),
+                                  child: ControlButton(
+                                    icon: Icons.arrow_forward,
+                                    label: 'Right',
+                                    onPressed: () => _sendCommand('right'),
+                                    color: AppTheme.rightButtonColor,
+                                    isPressed: _activeCommand == 'right',
+                                  ),
+                                ),
+                              ],
                             ),
-                          ),
 
-                          const SizedBox(height: 20),
+                            const SizedBox(height: 16),
 
-                          // Action buttons row
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              ControlButton(
-                                icon: Icons.rotate_right,
-                                label: 'Rotate Bin',
-                                onPressed: () => _sendCommand('rotate_bin'),
-                                color: AppTheme.rotateButtonColor,
+                            // Backward button
+                            GestureDetector(
+                              onLongPress:
+                                  () => _startContinuousCommand('backward'),
+                              onLongPressEnd: (_) => _stopContinuousCommand(),
+                              child: ControlButton(
+                                icon: Icons.arrow_downward,
+                                label: 'Backward',
+                                onPressed: () => _sendCommand('backward'),
+                                color: AppTheme.backwardButtonColor,
+                                isPressed: _activeCommand == 'backward',
                               ),
-                              const SizedBox(width: 24),
-                              ControlButton(
-                                icon: Icons.pan_tool,
-                                label: 'Grab Trash',
-                                onPressed: () => _sendCommand('grab_trash'),
-                                color: AppTheme.grabButtonColor,
-                                isLarge: true,
-                                isGlowing: true,
-                              ),
-                            ],
-                          ),
-                        ],
+                            ),
+
+                            const SizedBox(height: 20),
+
+                            // Action buttons row
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                ControlButton(
+                                  icon: Icons.rotate_right,
+                                  label: 'Rotate Bin',
+                                  onPressed: () => _sendCommand('rotate_bin'),
+                                  color: AppTheme.rotateButtonColor,
+                                ),
+                                const SizedBox(width: 24),
+                                ControlButton(
+                                  icon: Icons.pan_tool,
+                                  label: 'Grab Trash',
+                                  onPressed: () => _sendCommand('grab_trash'),
+                                  color: AppTheme.grabButtonColor,
+                                  isLarge: true,
+                                  isGlowing: true,
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),

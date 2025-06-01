@@ -135,39 +135,45 @@ class _ControlButtonState extends State<ControlButton>
                   highlightColor: Colors.white.withOpacity(0.1),
                   onTap: () {},
                   child: Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          widget.icon,
-                          color: Colors.white,
-                          size: widget.isLarge ? 40 : 30,
-                          shadows: const [
-                            Shadow(
-                              color: Colors.black26,
-                              blurRadius: 2,
-                              offset: Offset(0, 1),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              widget.icon,
+                              color: Colors.white,
+                              size: widget.isLarge ? 40 : 30,
+                              shadows: const [
+                                Shadow(
+                                  color: Colors.black26,
+                                  blurRadius: 2,
+                                  offset: Offset(0, 1),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              widget.label,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: widget.isLarge ? 16 : 12,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5,
+                                shadows: const [
+                                  Shadow(
+                                    color: Colors.black26,
+                                    blurRadius: 2,
+                                    offset: Offset(0, 1),
+                                  ),
+                                ],
+                              ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 6),
-                        Text(
-                          widget.label,
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: widget.isLarge ? 16 : 14,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 0.5,
-                            shadows: const [
-                              Shadow(
-                                color: Colors.black26,
-                                blurRadius: 2,
-                                offset: Offset(0, 1),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                 ),

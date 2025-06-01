@@ -29,8 +29,13 @@ Future<void> main() async {
     );
 
     // Load environment variables from .env file
-    await dotenv.load(fileName: '.env');
-    LogService.info('Environment loaded successfully');
+    try {
+      await dotenv.load(fileName: '.env');
+      LogService.info('Environment loaded successfully');
+    } catch (e) {
+      // Still continue even if .env fails to load (for testing)
+      LogService.error('Error loading .env file', e);
+    }
   } catch (e) {
     LogService.error('Error during initialization', e);
   }

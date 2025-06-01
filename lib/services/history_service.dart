@@ -16,7 +16,7 @@ class HistoryService {
       final serverHistory = await _fetchHistoryFromServer();
       if (serverHistory.isNotEmpty) {
         // Cache the results locally
-        _saveHistoryLocally(serverHistory);
+        await _saveHistoryLocally(serverHistory);
         return serverHistory;
       }
 
@@ -39,13 +39,22 @@ class HistoryService {
         // Also update local cache
         final history = await _fetchHistoryFromLocal();
         history.insert(0, item); // Add at beginning
-        _saveHistoryLocally(history);
+        await _saveHistoryLocally(history);
       }
 
       return success;
     } catch (e) {
       LogService.error('Error adding history item', e);
-      return false;
+
+      // Try to save locally even if server fails
+      try {
+        final history = await _fetchHistoryFromLocal();
+        history.insert(0, item);
+        await _saveHistoryLocally(history);
+        return true;
+      } catch (_) {
+        return false;
+      }
     }
   }
 
@@ -55,16 +64,22 @@ class HistoryService {
       // Clear from server
       final success = await _clearHistoryFromServer();
 
-      if (success) {
-        // Also clear local cache
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.remove(_localHistoryKey);
-      }
+      // Also clear local cache regardless of server result
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_localHistoryKey);
 
       return success;
     } catch (e) {
       LogService.error('Error clearing history', e);
-      return false;
+
+      // Try to clear locally even if server fails
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove(_localHistoryKey);
+        return true;
+      } catch (_) {
+        return false;
+      }
     }
   }
 

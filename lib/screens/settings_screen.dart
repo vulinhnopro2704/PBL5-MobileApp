@@ -67,9 +67,9 @@ class _SettingsScreenState extends State<SettingsScreen>
       _wsHostController.text = EnvConfig.wsHost;
       _wsPortController.text = EnvConfig.wsPort;
 
-      // Load AI server settings
-      _aiServerHostController.text = EnvConfig.aiServerHost ?? 'localhost';
-      _aiServerPortController.text = EnvConfig.aiServerPort ?? '5000';
+      // Load AI server settings - remove unnecessary null-aware operators
+      _aiServerHostController.text = EnvConfig.aiServerHost;
+      _aiServerPortController.text = EnvConfig.aiServerPort;
 
       // Load robot speed
       _robotSpeed = EnvConfig.robotSpeed ?? 0.5;

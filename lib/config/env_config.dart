@@ -12,10 +12,9 @@ class EnvConfig {
   static String get wsUrl => 'ws://$wsHost:$wsPort';
 
   // AI Server settings
-  static String? get aiServerHost => dotenv.env['AI_SERVER_HOST'];
-  static String? get aiServerPort => dotenv.env['AI_SERVER_PORT'];
-  static String get aiServerUrl =>
-      'http://${aiServerHost ?? 'localhost'}:${aiServerPort ?? '5000'}';
+  static String get aiServerHost => dotenv.env['AI_SERVER_HOST'] ?? 'localhost';
+  static String get aiServerPort => dotenv.env['AI_SERVER_PORT'] ?? '5000';
+  static String get aiServerUrl => 'http://$aiServerHost:$aiServerPort';
 
   // Robot speed setting (0.1 to 1.0)
   static double? get robotSpeed {
@@ -27,6 +26,15 @@ class EnvConfig {
       return speed.clamp(0.1, 1.0);
     } catch (e) {
       return 0.5; // Default if parsing fails
+    }
+  }
+
+  // Check if environment is properly loaded
+  static bool get isInitialized {
+    try {
+      return dotenv.isInitialized && dotenv.env.isNotEmpty;
+    } catch (e) {
+      return false;
     }
   }
 }

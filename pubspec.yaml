@@ -45,8 +45,8 @@ dependencies:
     intl: ^0.20.2
     shared_preferences: ^2.5.3
 
-  http: any
-  uuid: any
+    http: any
+    uuid: any
 dev_dependencies:
     flutter_test:
         sdk: flutter

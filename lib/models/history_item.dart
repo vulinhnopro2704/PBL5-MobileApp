@@ -61,19 +61,7 @@ class HistoryItem {
     }
   }
 
-  // Get color for this event type
-  Color get color {
-    switch (eventType) {
-      case HistoryEventType.imageCaptured:
-        return Colors.blue;
-      case HistoryEventType.objectDetected:
-        return Colors.purple;
-      case HistoryEventType.trashGrabbed:
-        return Colors.orange;
-    }
-  }
-
-  // Get readable event type
+  // Get readable event type string
   String get eventTypeString {
     switch (eventType) {
       case HistoryEventType.imageCaptured:

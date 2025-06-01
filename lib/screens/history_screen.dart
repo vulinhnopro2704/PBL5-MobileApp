@@ -349,14 +349,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              color: item.color.withOpacity(0.2),
+              color: _getEventColor(item.eventType).withOpacity(0.2),
               borderRadius: const BorderRadius.vertical(
                 top: Radius.circular(12),
               ),
             ),
             child: Row(
               children: [
-                Icon(item.icon, color: item.color),
+                Icon(item.icon, color: _getEventColor(item.eventType)),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -435,7 +435,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
           // View details button
           TextButton(
             onPressed: () => _showHistoryItemDetails(item),
-            style: TextButton.styleFrom(foregroundColor: item.color),
+            style: TextButton.styleFrom(
+              foregroundColor: _getEventColor(item.eventType),
+            ),
             child: const Text('View Details'),
           ),
         ],
@@ -537,7 +539,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         padding: const EdgeInsets.all(16),
                         child: Row(
                           children: [
-                            Icon(item.icon, color: item.color, size: 28),
+                            Icon(
+                              item.icon,
+                              color: _getEventColor(item.eventType),
+                              size: 28,
+                            ),
                             const SizedBox(width: 12),
                             Expanded(
                               child: Column(
@@ -1013,6 +1019,18 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 ),
           ),
     );
+  }
+
+  // Get color based on event type
+  Color _getEventColor(HistoryEventType eventType) {
+    switch (eventType) {
+      case HistoryEventType.imageCaptured:
+        return Colors.blue;
+      case HistoryEventType.objectDetected:
+        return Colors.purple;
+      case HistoryEventType.trashGrabbed:
+        return Colors.orange;
+    }
   }
 
   // Helper methods for visualization

@@ -191,6 +191,10 @@ class _ControlScreenState extends State<ControlScreen>
 
     try {
       final imageUrl = await _apiService.captureImage();
+
+      // Check if widget is still mounted before updating state
+      if (!mounted) return;
+
       setState(() {
         _imageUrl = imageUrl;
         _isCameraLoading = false;
@@ -200,6 +204,10 @@ class _ControlScreenState extends State<ControlScreen>
       });
     } catch (e) {
       LogService.error('Error capturing image', e);
+
+      // Check if widget is still mounted before updating state
+      if (!mounted) return;
+
       setState(() {
         _isCameraLoading = false;
       });
@@ -231,6 +239,10 @@ class _ControlScreenState extends State<ControlScreen>
 
     try {
       final result = await _apiService.detectObjects();
+
+      // Check if widget is still mounted before updating state
+      if (!mounted) return;
+
       setState(() {
         _isDetecting = false;
         if (result != null && result.containsKey('objects')) {
@@ -239,6 +251,10 @@ class _ControlScreenState extends State<ControlScreen>
       });
     } catch (e) {
       LogService.error('Error detecting objects', e);
+
+      // Check if widget is still mounted before updating state
+      if (!mounted) return;
+
       setState(() {
         _isDetecting = false;
       });

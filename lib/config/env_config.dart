@@ -1,6 +1,10 @@
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class EnvConfig {
+  // Store resolved IP for raspberrypi.local
+  static String? _resolvedRaspberryPiIP;
+
   // API settings
   static String get apiHost => dotenv.env['API_HOST'] ?? 'localhost';
   static String get apiPort => dotenv.env['API_PORT'] ?? '8000';
@@ -9,7 +13,46 @@ class EnvConfig {
   // WebSocket settings
   static String get wsHost => dotenv.env['WS_HOST'] ?? 'localhost';
   static String get wsPort => dotenv.env['WS_PORT'] ?? '8080';
-  static String get wsUrl => 'ws://$wsHost:$wsPort';
+
+  // Get WebSocket URL with fallback logic
+  static String get wsUrl {
+    final host = wsHost;
+    final port = wsPort;
+
+    // If WS_URL is directly specified, use that
+    if (dotenv.env.containsKey('WS_URL')) {
+      return dotenv.env['WS_URL']!;
+    }
+
+    // If using raspberrypi.local and we have a resolved IP, use it
+    if (host == 'raspberrypi.local' && _resolvedRaspberryPiIP != null) {
+      return 'ws://$_resolvedRaspberryPiIP:$port';
+    }
+
+    // Regular URL construction
+    return 'ws://$host:$port';
+  }
+
+  // Store a resolved IP for raspberrypi.local
+  static Future<void> setResolvedRaspberryPiIP(String ip) async {
+    _resolvedRaspberryPiIP = ip;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('resolved_raspberrypi_ip', ip);
+    } catch (e) {
+      // Ignore errors when saving preference
+    }
+  }
+
+  // Load previously resolved IP for raspberrypi.local
+  static Future<void> loadResolvedRaspberryPiIP() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _resolvedRaspberryPiIP = prefs.getString('resolved_raspberrypi_ip');
+    } catch (e) {
+      // Ignore errors when loading preference
+    }
+  }
 
   // AI Server settings
   static String get aiServerHost => dotenv.env['AI_SERVER_HOST'] ?? 'localhost';

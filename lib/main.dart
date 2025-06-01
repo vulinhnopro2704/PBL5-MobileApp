@@ -7,6 +7,8 @@ import 'screens/settings_screen.dart';
 import 'screens/history_screen.dart';
 import 'services/log_service.dart';
 import 'config/app_theme.dart';
+import 'config/env_config.dart';
+import 'utils/network_utils.dart';
 
 Future<void> main() async {
   try {
@@ -32,6 +34,14 @@ Future<void> main() async {
     try {
       await dotenv.load(fileName: '.env');
       LogService.info('Environment loaded successfully');
+
+      // Load previously resolved IP address
+      await EnvConfig.loadResolvedRaspberryPiIP();
+
+      // Try to resolve raspberrypi.local in background
+      if (EnvConfig.wsHost == 'raspberrypi.local') {
+        NetworkUtils.resolveRaspberryPiLocal();
+      }
     } catch (e) {
       // Still continue even if .env fails to load (for testing)
       LogService.error('Error loading .env file', e);

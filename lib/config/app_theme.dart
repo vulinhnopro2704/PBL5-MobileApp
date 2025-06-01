@@ -39,7 +39,7 @@ class AppTheme {
   );
 
   static TextStyle subheadingStyle = GoogleFonts.poppins(
-    fontSize: 18,
+    fontSize: 10,
     fontWeight: FontWeight.w500,
     color: Colors.white,
   );

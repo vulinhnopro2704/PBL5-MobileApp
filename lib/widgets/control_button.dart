@@ -11,6 +11,7 @@ class ControlButton extends StatefulWidget {
   final bool isLarge;
   final bool isGlowing;
   final bool isPressed;
+  final double size; // New parameter for button size
 
   const ControlButton({
     super.key,
@@ -21,6 +22,7 @@ class ControlButton extends StatefulWidget {
     this.isLarge = false,
     this.isGlowing = false,
     this.isPressed = false,
+    this.size = 70, // Default size if not specified
   });
 
   @override
@@ -95,27 +97,27 @@ class _ControlButtonState extends State<ControlButton>
           child: Transform.scale(
             scale: widget.isPressed ? _scaleAnimation.value : 1.0,
             child: Container(
-              width: widget.isLarge ? 200 : 100,
-              height: widget.isLarge ? 90 : 70,
+              width: widget.isLarge ? widget.size * 1.3 : widget.size,
+              height: widget.isLarge ? widget.size * 1.3 : widget.size,
               decoration: BoxDecoration(
                 color: widget.color ?? AppTheme.primaryColor,
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(widget.size / 4),
                 boxShadow: [
                   // Main shadow
                   BoxShadow(
                     color: (widget.color ?? AppTheme.primaryColor).withOpacity(
                       0.4,
                     ),
-                    blurRadius: 12,
-                    offset: const Offset(0, 6),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
                   ),
                   // Glow effect if enabled
                   if (widget.isGlowing)
                     BoxShadow(
                       color: (widget.color ?? AppTheme.primaryColor)
                           .withOpacity(0.3 * _glowAnimation.value),
-                      blurRadius: 20 * _glowAnimation.value,
-                      spreadRadius: 2 * _glowAnimation.value,
+                      blurRadius: 15 * _glowAnimation.value,
+                      spreadRadius: 1 * _glowAnimation.value,
                     ),
                 ],
                 gradient: LinearGradient(
@@ -130,50 +132,25 @@ class _ControlButtonState extends State<ControlButton>
               child: Material(
                 color: Colors.transparent,
                 child: InkWell(
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(widget.size / 4),
                   splashColor: Colors.white.withOpacity(0.2),
                   highlightColor: Colors.white.withOpacity(0.1),
-                  onTap: () {},
+                  onTap:
+                      widget
+                          .onPressed, // Use the onPressed callback here instead of empty function
                   child: Center(
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4.0),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              widget.icon,
-                              color: Colors.white,
-                              size: widget.isLarge ? 40 : 30,
-                              shadows: const [
-                                Shadow(
-                                  color: Colors.black26,
-                                  blurRadius: 2,
-                                  offset: Offset(0, 1),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              widget.label,
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: widget.isLarge ? 16 : 12,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 0.5,
-                                shadows: const [
-                                  Shadow(
-                                    color: Colors.black26,
-                                    blurRadius: 2,
-                                    offset: Offset(0, 1),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
+                    child: Icon(
+                      widget.icon,
+                      color: Colors.white,
+                      size:
+                          widget.isLarge ? widget.size / 2 : widget.size / 2.5,
+                      shadows: const [
+                        Shadow(
+                          color: Colors.black26,
+                          blurRadius: 2,
+                          offset: Offset(0, 1),
                         ),
-                      ),
+                      ],
                     ),
                   ),
                 ),

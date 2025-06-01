@@ -38,10 +38,28 @@ class _SettingsScreenState extends State<SettingsScreen>
   bool _isTesting = false;
   bool _isLoading = false;
 
+  // Robot mode settings
+  bool _isAutoMode = false;
+  bool _isPoweredOn = true;
+
   @override
   void initState() {
     super.initState();
     _loadSettings();
+
+    // Initialize robot state from WebSocket service
+    _isAutoMode = _wsService.isAutoMode;
+    _isPoweredOn = _wsService.isPoweredOn;
+
+    // Listen for changes in robot state
+    _wsService.connectionStatusStream.listen((isConnected) {
+      if (isConnected && mounted) {
+        setState(() {
+          _isAutoMode = _wsService.isAutoMode;
+          _isPoweredOn = _wsService.isPoweredOn;
+        });
+      }
+    });
   }
 
   @override
@@ -254,6 +272,134 @@ class _SettingsScreenState extends State<SettingsScreen>
                               style: AppTheme.headingStyle,
                               textAlign: TextAlign.center,
                             ),
+                            const SizedBox(height: 24),
+
+                            // Robot Mode Card (New)
+                            Container(
+                              decoration: AppTheme.cardDecoration,
+                              padding: const EdgeInsets.all(16.0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.settings_applications,
+                                        color: Colors.white,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'Robot Mode',
+                                        style: AppTheme.subheadingStyle,
+                                      ),
+                                    ],
+                                  ),
+                                  const Divider(color: Colors.white24),
+                                  const SizedBox(height: 16),
+
+                                  // Power Status
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        'Power Status:',
+                                        style: AppTheme.bodyStyle,
+                                      ),
+                                      Switch(
+                                        value: _isPoweredOn,
+                                        onChanged: (value) {
+                                          setState(() {
+                                            _isPoweredOn = value;
+                                          });
+                                          _wsService.togglePower();
+                                        },
+                                        activeColor: AppTheme.accentColor,
+                                        activeTrackColor: AppTheme.accentColor
+                                            .withOpacity(0.5),
+                                      ),
+                                    ],
+                                  ),
+
+                                  // Auto/Manual Mode
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        'Operation Mode:',
+                                        style: AppTheme.bodyStyle,
+                                      ),
+                                      Row(
+                                        children: [
+                                          Text(
+                                            'Manual',
+                                            style: TextStyle(
+                                              color:
+                                                  !_isAutoMode
+                                                      ? Colors.white
+                                                      : Colors.white60,
+                                              fontWeight:
+                                                  !_isAutoMode
+                                                      ? FontWeight.bold
+                                                      : FontWeight.normal,
+                                            ),
+                                          ),
+                                          Switch(
+                                            value: _isAutoMode,
+                                            onChanged: (value) {
+                                              setState(() {
+                                                _isAutoMode = value;
+                                              });
+                                              _wsService.toggleAutoMode();
+                                            },
+                                            activeColor: AppTheme.accentColor,
+                                            activeTrackColor: AppTheme
+                                                .accentColor
+                                                .withOpacity(0.5),
+                                          ),
+                                          Text(
+                                            'Auto',
+                                            style: TextStyle(
+                                              color:
+                                                  _isAutoMode
+                                                      ? Colors.white
+                                                      : Colors.white60,
+                                              fontWeight:
+                                                  _isAutoMode
+                                                      ? FontWeight.bold
+                                                      : FontWeight.normal,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+
+                                  const SizedBox(height: 12),
+
+                                  // Mode explanation
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black12,
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: Colors.white24),
+                                    ),
+                                    child: Text(
+                                      _isAutoMode
+                                          ? 'Auto Mode: The robot will navigate and collect trash autonomously.'
+                                          : 'Manual Mode: You have full control over the robot movement and actions.',
+                                      style: const TextStyle(
+                                        color: Colors.white70,
+                                        fontStyle: FontStyle.italic,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+
                             const SizedBox(height: 24),
 
                             // Robot Speed Card

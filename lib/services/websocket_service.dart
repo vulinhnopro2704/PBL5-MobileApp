@@ -1,224 +1,255 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:web_socket_channel/web_socket_channel.dart';
-import 'package:web_socket_channel/status.dart' as status;
-import 'package:rxdart/rxdart.dart';
+import 'package:rxdart/subjects.dart';
 
 import '../config/env_config.dart';
+import '../constants/command_types.dart';
 import 'log_service.dart';
 
 class WebSocketService {
   WebSocketChannel? _channel;
   bool _isConnected = false;
-  Timer? _pingTimer;
+  int _reconnectAttempt = 0;
   Timer? _reconnectTimer;
-  int _reconnectAttempts = 0;
-  static const int _maxReconnectAttempts = 5;
-  static const Duration _reconnectDelay = Duration(seconds: 3);
 
   // Stream controllers
   final _messageController = BehaviorSubject<dynamic>();
   final _connectionStatusController = BehaviorSubject<bool>.seeded(false);
 
-  // Stream getters
+  // Robot state
+  bool _isPoweredOn = true;
+  bool _isAutoMode = false;
+  int _speed = 50;
+  int _binStatus = 0;
+
+  // Getters
   Stream<dynamic> get messageStream => _messageController.stream;
   Stream<bool> get connectionStatusStream => _connectionStatusController.stream;
-
-  // Connection status
   bool get isConnected => _isConnected;
+  bool get isPoweredOn => _isPoweredOn;
+  bool get isAutoMode => _isAutoMode;
+  int get speed => _speed;
+  int get binStatus => _binStatus;
 
   // Connect to WebSocket server
   Future<bool> connect() async {
     if (_isConnected) {
+      LogService.info('Already connected to WebSocket server');
       return true;
     }
 
-    LogService.info('Connecting to WebSocket server: ${EnvConfig.wsUrl}');
+    // Clear any existing reconnect timer
+    _reconnectTimer?.cancel();
 
     try {
+      LogService.info('Connecting to WebSocket server: ${EnvConfig.wsUrl}');
+
       _channel = WebSocketChannel.connect(Uri.parse(EnvConfig.wsUrl));
 
-      // Listen to incoming messages
+      // Listen for messages
       _channel!.stream.listen(
         (message) {
-          _messageController.add(message);
-          _resetReconnectAttempts();
-        },
-        onError: (error) {
-          LogService.error('WebSocket error', error);
-          _handleDisconnection();
+          _handleMessage(message);
         },
         onDone: () {
           LogService.info('WebSocket connection closed');
           _handleDisconnection();
         },
+        onError: (error) {
+          LogService.error('WebSocket error', error);
+          _handleDisconnection();
+        },
       );
 
-      // Set connected status
+      // Wait for a brief moment to ensure connection is established
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      // Update connection status
       _isConnected = true;
-      _connectionStatusController.add(true);
-      _resetReconnectAttempts();
+      _connectionStatusController.add(_isConnected);
+      _reconnectAttempt = 0;
 
-      // Start ping timer to keep connection alive
-      _startPingTimer();
-
+      LogService.info('Connected to WebSocket server');
       return true;
     } catch (e) {
       LogService.error('Failed to connect to WebSocket server', e);
-      _isConnected = false;
-      _connectionStatusController.add(false);
+      _handleDisconnection();
       return false;
     }
   }
 
   // Disconnect from WebSocket server
   void disconnect() {
-    _stopPingTimer();
-    _stopReconnectTimer();
-
+    _reconnectTimer?.cancel();
     if (_channel != null) {
-      _channel!.sink.close(status.goingAway);
+      _channel!.sink.close();
       _channel = null;
     }
-
     _isConnected = false;
     _connectionStatusController.add(false);
     LogService.info('Disconnected from WebSocket server');
   }
 
-  // Send message to server
-  void send(dynamic message) {
-    if (!_isConnected) {
-      LogService.warning('Attempted to send message while disconnected');
-      return;
-    }
-
-    if (message is Map) {
-      _channel!.sink.add(jsonEncode(message));
-    } else {
-      _channel!.sink.add(message.toString());
-    }
-  }
-
-  // Test connection to server
-  Future<bool> testConnection() async {
-    final completer = Completer<bool>();
-
-    // If already connected, just return true
-    if (_isConnected) {
-      return true;
-    }
-
-    try {
-      final testChannel = WebSocketChannel.connect(Uri.parse(EnvConfig.wsUrl));
-
-      // Set a timeout
-      final timer = Timer(const Duration(seconds: 5), () {
-        if (!completer.isCompleted) {
-          testChannel.sink.close();
-          completer.complete(false);
-        }
-      });
-
-      // Listen for connection establishment
-      testChannel.stream.listen(
-        (message) {
-          timer.cancel();
-          testChannel.sink.close();
-          if (!completer.isCompleted) {
-            completer.complete(true);
-          }
-        },
-        onError: (error) {
-          timer.cancel();
-          if (!completer.isCompleted) {
-            completer.complete(false);
-          }
-        },
-        onDone: () {
-          timer.cancel();
-          if (!completer.isCompleted) {
-            completer.complete(false);
-          }
-        },
-      );
-
-      // Send a test message
-      testChannel.sink.add(jsonEncode({'type': 'ping'}));
-
-      return completer.future;
-    } catch (e) {
-      LogService.error('Test connection error', e);
-      return false;
-    }
-  }
-
-  // Handle disconnection and auto-reconnect
+  // Handle reconnection on disconnect
   void _handleDisconnection() {
-    if (!_isConnected) return;
-
     _isConnected = false;
     _connectionStatusController.add(false);
-    _stopPingTimer();
+    LogService.info('Disconnected from WebSocket server');
 
-    // Attempt to reconnect
-    if (_reconnectAttempts < _maxReconnectAttempts) {
-      _startReconnectTimer();
-    } else {
-      LogService.warning('Max reconnect attempts reached');
+    // Schedule reconnect with exponential backoff
+    _reconnectAttempt++;
+
+    // Calculate backoff delay with jitter
+    final baseDelay = 1000; // Start with 1 second
+    final backoffFactor = 1.5;
+    final maxReconnectDelay = 30000; // 30 seconds
+
+    // Calculate delay: base * (1.5 ^ attempt) + random jitter
+    final backoffDelay = baseDelay * (backoffFactor * _reconnectAttempt);
+    final jitter = (DateTime.now().millisecondsSinceEpoch % 1000);
+    final delay = (backoffDelay + jitter).clamp(0, maxReconnectDelay).toInt();
+
+    LogService.info('Attempting to reconnect ($_reconnectAttempt/5)');
+
+    _reconnectTimer = Timer(Duration(milliseconds: delay), () {
+      if (_reconnectAttempt <= 5) {
+        connect();
+      } else {
+        LogService.error('Max reconnection attempts reached');
+      }
+    });
+  }
+
+  // Handle incoming WebSocket messages
+  void _handleMessage(dynamic message) {
+    try {
+      LogService.info('Message from server: $message');
+
+      // Parse the message
+      if (message is String) {
+        final data = jsonDecode(message);
+        _messageController.add(data);
+
+        // Update robot state based on received data
+        if (data is Map) {
+          if (data.containsKey('binStatus')) {
+            _binStatus = data['binStatus'];
+          }
+          if (data.containsKey('isAutoMode')) {
+            _isAutoMode = data['isAutoMode'];
+          }
+          if (data.containsKey('speed')) {
+            _speed = data['speed'];
+          }
+          if (data.containsKey('isPoweredOn')) {
+            _isPoweredOn = data['isPoweredOn'];
+          }
+        }
+      } else {
+        _messageController.add(message);
+      }
+    } catch (e) {
+      LogService.error('Error parsing WebSocket message', e);
     }
   }
 
-  // Start ping timer to keep connection alive
-  void _startPingTimer() {
-    _stopPingTimer();
-    _pingTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
-      if (_isConnected) {
-        send({'type': 'ping'});
-      } else {
-        _stopPingTimer();
+  // Send a generic message
+  void send(dynamic data) {
+    if (_isConnected && _channel != null) {
+      try {
+        final jsonString = jsonEncode(data);
+        _channel!.sink.add(jsonString);
+        LogService.info('Sent: $jsonString');
+      } catch (e) {
+        LogService.error('Error sending WebSocket message', e);
       }
-    });
+    } else {
+      LogService.error('Cannot send message: WebSocket not connected');
+    }
   }
 
-  // Stop ping timer
-  void _stopPingTimer() {
-    _pingTimer?.cancel();
-    _pingTimer = null;
+  // Send a command with the current speed
+  void sendCommand(String command) {
+    final data = {'direction': command, 'speed': _speed};
+    LogService.info('Sending WS command: $data');
+    send(data);
   }
 
-  // Start reconnect timer
-  void _startReconnectTimer() {
-    _stopReconnectTimer();
-    _reconnectAttempts++;
+  // Send a direction command
+  void sendDirectionCommand(DirectionCommand command) {
+    sendCommand(command.value);
+  }
 
-    LogService.info(
-      'Attempting to reconnect ($_reconnectAttempts/$_maxReconnectAttempts)',
+  // Send an action command
+  void sendActionCommand(ActionCommand command) {
+    sendCommand(command.value);
+  }
+
+  // Send a mode command
+  void sendModeCommand(ModeCommand command) {
+    if (command == ModeCommand.autoMode) {
+      _isAutoMode = true;
+    } else {
+      _isAutoMode = false;
+    }
+    sendCommand(command.value);
+  }
+
+  // Send a power command
+  void sendPowerCommand(PowerCommand command) {
+    if (command == PowerCommand.powerOn) {
+      _isPoweredOn = true;
+    } else {
+      _isPoweredOn = false;
+    }
+    sendCommand(command.value);
+  }
+
+  // Set speed
+  void setSpeed(int newSpeed) {
+    _speed = newSpeed.clamp(0, 100);
+    send({'speed': _speed});
+  }
+
+  // Toggle auto mode
+  void toggleAutoMode() {
+    _isAutoMode = !_isAutoMode;
+    send({'isAutoMode': _isAutoMode});
+    sendModeCommand(
+      _isAutoMode ? ModeCommand.autoMode : ModeCommand.manualMode,
     );
+  }
 
-    _reconnectTimer = Timer(_reconnectDelay, () async {
-      final reconnected = await connect();
-      if (!reconnected && _reconnectAttempts < _maxReconnectAttempts) {
-        _startReconnectTimer();
+  // Toggle power
+  void togglePower() {
+    _isPoweredOn = !_isPoweredOn;
+    send({'isPoweredOn': _isPoweredOn});
+    sendPowerCommand(
+      _isPoweredOn ? PowerCommand.powerOn : PowerCommand.powerOff,
+    );
+  }
+
+  // Test connection
+  Future<bool> testConnection() async {
+    final wasConnected = _isConnected;
+    if (!wasConnected) {
+      final result = await connect();
+      if (result) {
+        // Send a test message
+        send({'test': true});
+        return true;
       }
-    });
+      return false;
+    }
+    // Already connected
+    send({'test': true});
+    return true;
   }
 
-  // Stop reconnect timer
-  void _stopReconnectTimer() {
-    _reconnectTimer?.cancel();
-    _reconnectTimer = null;
-  }
-
-  // Reset reconnect attempts counter
-  void _resetReconnectAttempts() {
-    _reconnectAttempts = 0;
-  }
-
-  // Clean up resources
+  // Dispose resources
   void dispose() {
-    _stopPingTimer();
-    _stopReconnectTimer();
+    _reconnectTimer?.cancel();
     disconnect();
     _messageController.close();
     _connectionStatusController.close();

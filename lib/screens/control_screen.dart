@@ -9,6 +9,7 @@ import '../services/log_service.dart';
 import '../services/api_service.dart';
 import '../widgets/control_button.dart';
 import '../config/app_theme.dart';
+import '../constants/command_types.dart';
 
 class ControlScreen extends StatefulWidget {
   const ControlScreen({super.key});
@@ -119,7 +120,11 @@ class _ControlScreenState extends State<ControlScreen>
   }
 
   void _sendCommand(String command) {
+    // Log the command first thing
+    LogService.info('ROBOT COMMAND: $command');
+
     if (!_webSocketService.isConnected) {
+      LogService.warning('Cannot send command: Not connected to server');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Row(
@@ -144,11 +149,11 @@ class _ControlScreenState extends State<ControlScreen>
       return;
     }
 
-    LogService.info('Sending command: $command');
-    _webSocketService.send({'command': command});
+    // Send command to websocket service
+    _webSocketService.sendCommand(command);
 
     // Record trash grab events
-    if (command == 'grab_trash') {
+    if (command == ActionCommand.grabTrash.value) {
       _apiService.recordTrashGrab(
         success: true,
         imageUrl: _imageUrl,
@@ -632,14 +637,21 @@ class _ControlScreenState extends State<ControlScreen>
                             // Forward button
                             GestureDetector(
                               onLongPress:
-                                  () => _startContinuousCommand('forward'),
+                                  () => _startContinuousCommand(
+                                    DirectionCommand.forward.value,
+                                  ),
                               onLongPressEnd: (_) => _stopContinuousCommand(),
                               child: ControlButton(
                                 icon: Icons.arrow_upward,
                                 label: 'Forward',
-                                onPressed: () => _sendCommand('forward'),
+                                onPressed:
+                                    () => _sendCommand(
+                                      DirectionCommand.forward.value,
+                                    ),
                                 color: AppTheme.forwardButtonColor,
-                                isPressed: _activeCommand == 'forward',
+                                isPressed:
+                                    _activeCommand ==
+                                    DirectionCommand.forward.value,
                               ),
                             ),
 
@@ -651,22 +663,32 @@ class _ControlScreenState extends State<ControlScreen>
                               children: [
                                 GestureDetector(
                                   onLongPress:
-                                      () => _startContinuousCommand('left'),
+                                      () => _startContinuousCommand(
+                                        DirectionCommand.left.value,
+                                      ),
                                   onLongPressEnd:
                                       (_) => _stopContinuousCommand(),
                                   child: ControlButton(
                                     icon: Icons.arrow_back,
                                     label: 'Left',
-                                    onPressed: () => _sendCommand('left'),
+                                    onPressed:
+                                        () => _sendCommand(
+                                          DirectionCommand.left.value,
+                                        ),
                                     color: AppTheme.leftButtonColor,
-                                    isPressed: _activeCommand == 'left',
+                                    isPressed:
+                                        _activeCommand ==
+                                        DirectionCommand.left.value,
                                   ),
                                 ),
                                 const SizedBox(width: 16),
                                 ControlButton(
                                   icon: Icons.stop_circle,
                                   label: 'Stop',
-                                  onPressed: () => _sendCommand('stop'),
+                                  onPressed:
+                                      () => _sendCommand(
+                                        DirectionCommand.stop.value,
+                                      ),
                                   color: AppTheme.stopButtonColor,
                                   isPressed: false,
                                   isGlowing: true,
@@ -674,15 +696,22 @@ class _ControlScreenState extends State<ControlScreen>
                                 const SizedBox(width: 16),
                                 GestureDetector(
                                   onLongPress:
-                                      () => _startContinuousCommand('right'),
+                                      () => _startContinuousCommand(
+                                        DirectionCommand.right.value,
+                                      ),
                                   onLongPressEnd:
                                       (_) => _stopContinuousCommand(),
                                   child: ControlButton(
                                     icon: Icons.arrow_forward,
                                     label: 'Right',
-                                    onPressed: () => _sendCommand('right'),
+                                    onPressed:
+                                        () => _sendCommand(
+                                          DirectionCommand.right.value,
+                                        ),
                                     color: AppTheme.rightButtonColor,
-                                    isPressed: _activeCommand == 'right',
+                                    isPressed:
+                                        _activeCommand ==
+                                        DirectionCommand.right.value,
                                   ),
                                 ),
                               ],
@@ -693,14 +722,21 @@ class _ControlScreenState extends State<ControlScreen>
                             // Backward button
                             GestureDetector(
                               onLongPress:
-                                  () => _startContinuousCommand('backward'),
+                                  () => _startContinuousCommand(
+                                    DirectionCommand.backward.value,
+                                  ),
                               onLongPressEnd: (_) => _stopContinuousCommand(),
                               child: ControlButton(
                                 icon: Icons.arrow_downward,
                                 label: 'Backward',
-                                onPressed: () => _sendCommand('backward'),
+                                onPressed:
+                                    () => _sendCommand(
+                                      DirectionCommand.backward.value,
+                                    ),
                                 color: AppTheme.backwardButtonColor,
-                                isPressed: _activeCommand == 'backward',
+                                isPressed:
+                                    _activeCommand ==
+                                    DirectionCommand.backward.value,
                               ),
                             ),
 
@@ -713,14 +749,20 @@ class _ControlScreenState extends State<ControlScreen>
                                 ControlButton(
                                   icon: Icons.rotate_right,
                                   label: 'Rotate Bin',
-                                  onPressed: () => _sendCommand('rotate_bin'),
+                                  onPressed:
+                                      () => _sendCommand(
+                                        ActionCommand.rotateBin.value,
+                                      ),
                                   color: AppTheme.rotateButtonColor,
                                 ),
                                 const SizedBox(width: 24),
                                 ControlButton(
                                   icon: Icons.pan_tool,
                                   label: 'Grab Trash',
-                                  onPressed: () => _sendCommand('grab_trash'),
+                                  onPressed:
+                                      () => _sendCommand(
+                                        ActionCommand.grabTrash.value,
+                                      ),
                                   color: AppTheme.grabButtonColor,
                                   isLarge: true,
                                   isGlowing: true,
@@ -741,7 +783,8 @@ class _ControlScreenState extends State<ControlScreen>
                       ControlButton(
                         icon: Icons.stop_circle,
                         label: 'Stop',
-                        onPressed: () => _sendCommand('stop'),
+                        onPressed:
+                            () => _sendCommand(DirectionCommand.stop.value),
                         color: AppTheme.stopButtonColor,
                         isGlowing: true,
                       ),
@@ -749,7 +792,8 @@ class _ControlScreenState extends State<ControlScreen>
                       ControlButton(
                         icon: Icons.pan_tool,
                         label: 'Grab',
-                        onPressed: () => _sendCommand('grab_trash'),
+                        onPressed:
+                            () => _sendCommand(ActionCommand.grabTrash.value),
                         color: AppTheme.grabButtonColor,
                       ),
                     ],

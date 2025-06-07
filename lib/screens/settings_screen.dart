@@ -3,9 +3,15 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import '../config/env_config.dart';
 import '../config/app_theme.dart';
-import '../services/api_service.dart';
+import '../services/ai_service.dart';
 import '../services/log_service.dart';
 import '../services/websocket_service.dart';
+
+// Import custom widgets
+import '../widgets/setting/setting_card.dart';
+import '../widgets/setting/connection_setting.dart';
+import '../widgets/setting/robot_mode_setting.dart';
+import '../widgets/setting/speed_setting.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -18,27 +24,24 @@ class _SettingsScreenState extends State<SettingsScreen>
     with TickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
 
-  final _apiHostController = TextEditingController();
-  final _apiPortController = TextEditingController();
+  // Controllers for connection settings
   final _wsHostController = TextEditingController();
   final _wsPortController = TextEditingController();
-  // New controllers for AI server settings
   final _aiServerHostController = TextEditingController();
   final _aiServerPortController = TextEditingController();
 
   // Speed settings
   double _robotSpeed = 0.5; // Default speed 50%
 
-  final ApiService _apiService = ApiService();
+  // Services
+  final AiService _aiService = AiService();
   final WebSocketService _wsService = WebSocketService();
 
-  String _apiTestResult = '';
+  // State variables
   String _wsTestResult = '';
   String _aiServerTestResult = '';
   bool _isTesting = false;
   bool _isLoading = false;
-
-  // Robot mode settings
   bool _isAutoMode = false;
   bool _isPoweredOn = true;
 
@@ -64,8 +67,6 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   @override
   void dispose() {
-    _apiHostController.dispose();
-    _apiPortController.dispose();
     _wsHostController.dispose();
     _wsPortController.dispose();
     _aiServerHostController.dispose();
@@ -80,16 +81,10 @@ class _SettingsScreenState extends State<SettingsScreen>
     });
 
     try {
-      _apiHostController.text = EnvConfig.apiHost;
-      _apiPortController.text = EnvConfig.apiPort;
       _wsHostController.text = EnvConfig.wsHost;
       _wsPortController.text = EnvConfig.wsPort;
-
-      // Load AI server settings - remove unnecessary null-aware operators
       _aiServerHostController.text = EnvConfig.aiServerHost;
       _aiServerPortController.text = EnvConfig.aiServerPort;
-
-      // Load robot speed
       _robotSpeed = EnvConfig.robotSpeed ?? 0.5;
     } catch (e) {
       LogService.error('Error loading settings', e);
@@ -111,16 +106,10 @@ class _SettingsScreenState extends State<SettingsScreen>
 
     try {
       // Update environment variables in memory
-      dotenv.env['API_HOST'] = _apiHostController.text.trim();
-      dotenv.env['API_PORT'] = _apiPortController.text.trim();
       dotenv.env['WS_HOST'] = _wsHostController.text.trim();
       dotenv.env['WS_PORT'] = _wsPortController.text.trim();
-
-      // Save AI server settings
       dotenv.env['AI_SERVER_HOST'] = _aiServerHostController.text.trim();
       dotenv.env['AI_SERVER_PORT'] = _aiServerPortController.text.trim();
-
-      // Save robot speed
       dotenv.env['ROBOT_SPEED'] = _robotSpeed.toString();
 
       // Show success message
@@ -143,7 +132,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       );
 
       LogService.info(
-        'Settings updated: API=${EnvConfig.apiBaseUrl}, WS=${EnvConfig.wsUrl}, AI=${_aiServerHostController.text}:${_aiServerPortController.text}, Speed=$_robotSpeed',
+        'Settings updated: WS=${EnvConfig.wsUrl}, AI=${_aiServerHostController.text}:${_aiServerPortController.text}, Speed=$_robotSpeed',
       );
     } catch (e) {
       LogService.error('Error saving settings', e);
@@ -162,30 +151,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
   }
 
-  Future<void> _testApiConnection() async {
-    setState(() {
-      _isTesting = true;
-      _apiTestResult = 'Testing...';
-    });
-
-    try {
-      final success = await _apiService.testConnection();
-      setState(() {
-        _apiTestResult =
-            success ? 'Connection successful' : 'Connection failed';
-      });
-    } catch (e) {
-      setState(() {
-        _apiTestResult = 'Error: ${e.toString()}';
-      });
-      LogService.error('API test error', e);
-    } finally {
-      setState(() {
-        _isTesting = false;
-      });
-    }
-  }
-
+  // Connection test methods
   Future<void> _testWsConnection() async {
     setState(() {
       _isTesting = true;
@@ -221,8 +187,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     });
 
     try {
-      // Use the API service to test connection to AI server
-      final success = await _apiService.testAiServerConnection(
+      final success = await _aiService.testAiServerConnection(
         _aiServerHostController.text,
         int.parse(_aiServerPortController.text),
       );
@@ -274,781 +239,78 @@ class _SettingsScreenState extends State<SettingsScreen>
                             ),
                             const SizedBox(height: 24),
 
-                            // Robot Mode Card (New)
-                            Container(
-                              decoration: AppTheme.cardDecoration,
-                              padding: const EdgeInsets.all(16.0),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      const Icon(
-                                        Icons.settings_applications,
-                                        color: Colors.white,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        'Robot Mode',
-                                        style: AppTheme.subheadingStyle,
-                                      ),
-                                    ],
-                                  ),
-                                  const Divider(color: Colors.white24),
-                                  const SizedBox(height: 16),
-
-                                  // Power Status
-                                  Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(
-                                        'Power Status:',
-                                        style: AppTheme.bodyStyle,
-                                      ),
-                                      Switch(
-                                        value: _isPoweredOn,
-                                        onChanged: (value) {
-                                          setState(() {
-                                            _isPoweredOn = value;
-                                          });
-                                          _wsService.togglePower();
-                                        },
-                                        activeColor: AppTheme.accentColor,
-                                        activeTrackColor: AppTheme.accentColor
-                                            .withOpacity(0.5),
-                                      ),
-                                    ],
-                                  ),
-
-                                  // Auto/Manual Mode
-                                  Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(
-                                        'Operation Mode:',
-                                        style: AppTheme.bodyStyle,
-                                      ),
-                                      Row(
-                                        children: [
-                                          Text(
-                                            'Manual',
-                                            style: TextStyle(
-                                              color:
-                                                  !_isAutoMode
-                                                      ? Colors.white
-                                                      : Colors.white60,
-                                              fontWeight:
-                                                  !_isAutoMode
-                                                      ? FontWeight.bold
-                                                      : FontWeight.normal,
-                                            ),
-                                          ),
-                                          Switch(
-                                            value: _isAutoMode,
-                                            onChanged: (value) {
-                                              setState(() {
-                                                _isAutoMode = value;
-                                              });
-                                              _wsService.toggleAutoMode();
-                                            },
-                                            activeColor: AppTheme.accentColor,
-                                            activeTrackColor: AppTheme
-                                                .accentColor
-                                                .withOpacity(0.5),
-                                          ),
-                                          Text(
-                                            'Auto',
-                                            style: TextStyle(
-                                              color:
-                                                  _isAutoMode
-                                                      ? Colors.white
-                                                      : Colors.white60,
-                                              fontWeight:
-                                                  _isAutoMode
-                                                      ? FontWeight.bold
-                                                      : FontWeight.normal,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-
-                                  const SizedBox(height: 12),
-
-                                  // Mode explanation
-                                  Container(
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                      color: Colors.black12,
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(color: Colors.white24),
-                                    ),
-                                    child: Text(
-                                      _isAutoMode
-                                          ? 'Auto Mode: The robot will navigate and collect trash autonomously.'
-                                          : 'Manual Mode: You have full control over the robot movement and actions.',
-                                      style: const TextStyle(
-                                        color: Colors.white70,
-                                        fontStyle: FontStyle.italic,
-                                      ),
-                                    ),
-                                  ),
-                                ],
+                            // Robot Mode Card
+                            SettingCard(
+                              title: 'Robot Mode',
+                              icon: Icons.settings_applications,
+                              child: RobotModeSetting(
+                                isPoweredOn: _isPoweredOn,
+                                isAutoMode: _isAutoMode,
+                                onPowerToggle: (value) {
+                                  setState(() {
+                                    _isPoweredOn = value;
+                                  });
+                                  _wsService.togglePower();
+                                },
+                                onModeToggle: (value) {
+                                  setState(() {
+                                    _isAutoMode = value;
+                                  });
+                                  _wsService.toggleAutoMode();
+                                },
                               ),
                             ),
 
                             const SizedBox(height: 24),
 
                             // Robot Speed Card
-                            Container(
-                              decoration: AppTheme.cardDecoration,
-                              padding: const EdgeInsets.all(16.0),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      const Icon(
-                                        Icons.speed,
-                                        color: Colors.white,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        'Robot Speed',
-                                        style: AppTheme.subheadingStyle,
-                                      ),
-                                    ],
-                                  ),
-                                  const Divider(color: Colors.white24),
-                                  const SizedBox(height: 8),
-
-                                  // Speed information
-                                  Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text('Speed:', style: AppTheme.bodyStyle),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 12,
-                                          vertical: 6,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: _getSpeedColor(),
-                                          borderRadius: BorderRadius.circular(
-                                            20,
-                                          ),
-                                        ),
-                                        child: Text(
-                                          '${(_robotSpeed * 100).toInt()}%',
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-
-                                  // Speed slider
-                                  Slider(
-                                    value: _robotSpeed,
-                                    onChanged: (value) {
-                                      setState(() {
-                                        _robotSpeed = value;
-                                      });
-                                    },
-                                    min: 0.1,
-                                    max: 1.0,
-                                    divisions: 9,
-                                    label: '${(_robotSpeed * 100).toInt()}%',
-                                    activeColor: _getSpeedColor(),
-                                  ),
-
-                                  // Speed description
-                                  Text(
-                                    _getSpeedDescription(),
-                                    style: TextStyle(
-                                      color: Colors.white70,
-                                      fontStyle: FontStyle.italic,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ],
-                              ),
-                            ),
-
-                            const SizedBox(height: 24),
-
-                            // API Settings Card
-                            Container(
-                              decoration: AppTheme.cardDecoration,
-                              padding: const EdgeInsets.all(16.0),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      const Icon(
-                                        Icons.api,
-                                        color: Colors.white,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        'API Settings',
-                                        style: AppTheme.subheadingStyle,
-                                      ),
-                                    ],
-                                  ),
-                                  const Divider(color: Colors.white24),
-                                  const SizedBox(height: 16),
-
-                                  // API Host
-                                  TextFormField(
-                                    controller: _apiHostController,
-                                    decoration: InputDecoration(
-                                      labelText: 'API Host',
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        borderSide: const BorderSide(
-                                          color: Colors.white30,
-                                        ),
-                                      ),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        borderSide: const BorderSide(
-                                          color: Colors.white30,
-                                        ),
-                                      ),
-                                      filled: true,
-                                      fillColor: AppTheme.surfaceDark
-                                          .withOpacity(0.7),
-                                      labelStyle: const TextStyle(
-                                        color: Colors.white70,
-                                      ),
-                                      prefixIcon: const Icon(
-                                        Icons.computer,
-                                        color: Colors.white70,
-                                      ),
-                                    ),
-                                    style: const TextStyle(color: Colors.white),
-                                    validator: (value) {
-                                      if (value == null || value.isEmpty) {
-                                        return 'Please enter API host';
-                                      }
-                                      return null;
-                                    },
-                                  ),
-                                  const SizedBox(height: 16),
-
-                                  // API Port
-                                  TextFormField(
-                                    controller: _apiPortController,
-                                    decoration: InputDecoration(
-                                      labelText: 'API Port',
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        borderSide: const BorderSide(
-                                          color: Colors.white30,
-                                        ),
-                                      ),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        borderSide: const BorderSide(
-                                          color: Colors.white30,
-                                        ),
-                                      ),
-                                      filled: true,
-                                      fillColor: AppTheme.surfaceDark
-                                          .withOpacity(0.7),
-                                      labelStyle: const TextStyle(
-                                        color: Colors.white70,
-                                      ),
-                                      prefixIcon: const Icon(
-                                        Icons.pin,
-                                        color: Colors.white70,
-                                      ),
-                                    ),
-                                    style: const TextStyle(color: Colors.white),
-                                    validator: (value) {
-                                      if (value == null || value.isEmpty) {
-                                        return 'Please enter API port';
-                                      }
-                                      final port = int.tryParse(value);
-                                      if (port == null ||
-                                          port <= 0 ||
-                                          port > 65535) {
-                                        return 'Please enter a valid port number (1-65535)';
-                                      }
-                                      return null;
-                                    },
-                                    keyboardType: TextInputType.number,
-                                  ),
-                                  const SizedBox(height: 16),
-
-                                  // Test API button and result
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: ElevatedButton.icon(
-                                          onPressed:
-                                              _isTesting
-                                                  ? null
-                                                  : _testApiConnection,
-                                          icon: const Icon(Icons.speed),
-                                          label: Text(
-                                            _isTesting
-                                                ? 'Testing...'
-                                                : 'Test API Connection',
-                                          ),
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor:
-                                                AppTheme.primaryColor,
-                                            padding: const EdgeInsets.symmetric(
-                                              vertical: 12,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 16),
-                                      Expanded(
-                                        child: Container(
-                                          padding: const EdgeInsets.all(12),
-                                          decoration: BoxDecoration(
-                                            color:
-                                                _apiTestResult.contains(
-                                                      'successful',
-                                                    )
-                                                    ? AppTheme.connectedColor
-                                                        .withOpacity(0.2)
-                                                    : _apiTestResult.contains(
-                                                          'failed',
-                                                        ) ||
-                                                        _apiTestResult.contains(
-                                                          'Error',
-                                                        )
-                                                    ? AppTheme.disconnectedColor
-                                                        .withOpacity(0.2)
-                                                    : Colors.grey.shade800
-                                                        .withOpacity(0.5),
-                                            borderRadius: BorderRadius.circular(
-                                              12,
-                                            ),
-                                            border: Border.all(
-                                              color:
-                                                  _apiTestResult.contains(
-                                                        'successful',
-                                                      )
-                                                      ? AppTheme.connectedColor
-                                                      : _apiTestResult.contains(
-                                                            'failed',
-                                                          ) ||
-                                                          _apiTestResult
-                                                              .contains('Error')
-                                                      ? AppTheme
-                                                          .disconnectedColor
-                                                      : Colors.grey.shade600,
-                                              width: 1,
-                                            ),
-                                          ),
-                                          child: Text(
-                                            _apiTestResult.isEmpty
-                                                ? 'Not tested'
-                                                : _apiTestResult,
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                            ),
-                                            textAlign: TextAlign.center,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
+                            SettingCard(
+                              title: 'Robot Speed',
+                              icon: Icons.speed,
+                              child: SpeedSetting(
+                                robotSpeed: _robotSpeed,
+                                onSpeedChanged: (value) {
+                                  setState(() {
+                                    _robotSpeed = value;
+                                  });
+                                },
                               ),
                             ),
 
                             const SizedBox(height: 24),
 
                             // WebSocket Settings Card
-                            Container(
-                              decoration: AppTheme.cardDecoration,
-                              padding: const EdgeInsets.all(16.0),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      const Icon(
-                                        Icons.wifi,
-                                        color: Colors.white,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        'WebSocket Settings',
-                                        style: AppTheme.subheadingStyle,
-                                      ),
-                                    ],
-                                  ),
-                                  const Divider(color: Colors.white24),
-                                  const SizedBox(height: 16),
-
-                                  // WebSocket Host
-                                  TextFormField(
-                                    controller: _wsHostController,
-                                    decoration: InputDecoration(
-                                      labelText: 'WebSocket Host',
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        borderSide: const BorderSide(
-                                          color: Colors.white30,
-                                        ),
-                                      ),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        borderSide: const BorderSide(
-                                          color: Colors.white30,
-                                        ),
-                                      ),
-                                      filled: true,
-                                      fillColor: AppTheme.surfaceDark
-                                          .withOpacity(0.7),
-                                      labelStyle: const TextStyle(
-                                        color: Colors.white70,
-                                      ),
-                                      prefixIcon: const Icon(
-                                        Icons.computer,
-                                        color: Colors.white70,
-                                      ),
-                                    ),
-                                    style: const TextStyle(color: Colors.white),
-                                    validator: (value) {
-                                      if (value == null || value.isEmpty) {
-                                        return 'Please enter WebSocket host';
-                                      }
-                                      return null;
-                                    },
-                                  ),
-                                  const SizedBox(height: 16),
-
-                                  // WebSocket Port
-                                  TextFormField(
-                                    controller: _wsPortController,
-                                    decoration: InputDecoration(
-                                      labelText: 'WebSocket Port',
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        borderSide: const BorderSide(
-                                          color: Colors.white30,
-                                        ),
-                                      ),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        borderSide: const BorderSide(
-                                          color: Colors.white30,
-                                        ),
-                                      ),
-                                      filled: true,
-                                      fillColor: AppTheme.surfaceDark
-                                          .withOpacity(0.7),
-                                      labelStyle: const TextStyle(
-                                        color: Colors.white70,
-                                      ),
-                                      prefixIcon: const Icon(
-                                        Icons.pin,
-                                        color: Colors.white70,
-                                      ),
-                                    ),
-                                    style: const TextStyle(color: Colors.white),
-                                    validator: (value) {
-                                      if (value == null || value.isEmpty) {
-                                        return 'Please enter WebSocket port';
-                                      }
-                                      final port = int.tryParse(value);
-                                      if (port == null ||
-                                          port <= 0 ||
-                                          port > 65535) {
-                                        return 'Please enter a valid port number (1-65535)';
-                                      }
-                                      return null;
-                                    },
-                                    keyboardType: TextInputType.number,
-                                  ),
-                                  const SizedBox(height: 16),
-
-                                  // Test WebSocket button and result
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: ElevatedButton.icon(
-                                          onPressed:
-                                              _isTesting
-                                                  ? null
-                                                  : _testWsConnection,
-                                          icon: const Icon(Icons.speed),
-                                          label: Text(
-                                            _isTesting
-                                                ? 'Testing...'
-                                                : 'Test WebSocket Connection',
-                                          ),
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor:
-                                                AppTheme.primaryColor,
-                                            padding: const EdgeInsets.symmetric(
-                                              vertical: 12,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 16),
-                                      Expanded(
-                                        child: Container(
-                                          padding: const EdgeInsets.all(12),
-                                          decoration: BoxDecoration(
-                                            color:
-                                                _wsTestResult.contains(
-                                                      'successful',
-                                                    )
-                                                    ? AppTheme.connectedColor
-                                                        .withOpacity(0.2)
-                                                    : _wsTestResult.contains(
-                                                          'failed',
-                                                        ) ||
-                                                        _wsTestResult.contains(
-                                                          'Error',
-                                                        )
-                                                    ? AppTheme.disconnectedColor
-                                                        .withOpacity(0.2)
-                                                    : Colors.grey.shade800
-                                                        .withOpacity(0.5),
-                                            borderRadius: BorderRadius.circular(
-                                              12,
-                                            ),
-                                            border: Border.all(
-                                              color:
-                                                  _wsTestResult.contains(
-                                                        'successful',
-                                                      )
-                                                      ? AppTheme.connectedColor
-                                                      : _wsTestResult.contains(
-                                                            'failed',
-                                                          ) ||
-                                                          _wsTestResult
-                                                              .contains('Error')
-                                                      ? AppTheme
-                                                          .disconnectedColor
-                                                      : Colors.grey.shade600,
-                                              width: 1,
-                                            ),
-                                          ),
-                                          child: Text(
-                                            _wsTestResult.isEmpty
-                                                ? 'Not tested'
-                                                : _wsTestResult,
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                            ),
-                                            textAlign: TextAlign.center,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
+                            SettingCard(
+                              title: 'WebSocket Settings',
+                              icon: Icons.wifi,
+                              child: ConnectionSetting(
+                                hostController: _wsHostController,
+                                portController: _wsPortController,
+                                hostLabel: 'WebSocket Host',
+                                portLabel: 'WebSocket Port',
+                                isTesting: _isTesting,
+                                testResult: _wsTestResult,
+                                onTestPressed: _testWsConnection,
+                                testButtonLabel: 'Test WebSocket Connection',
                               ),
                             ),
 
                             const SizedBox(height: 24),
 
                             // AI Server Settings Card
-                            Container(
-                              decoration: AppTheme.cardDecoration,
-                              padding: const EdgeInsets.all(16.0),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      const Icon(
-                                        Icons.memory,
-                                        color: Colors.white,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        'AI Server Settings',
-                                        style: AppTheme.subheadingStyle,
-                                      ),
-                                    ],
-                                  ),
-                                  const Divider(color: Colors.white24),
-                                  const SizedBox(height: 16),
-
-                                  // AI Server Host
-                                  TextFormField(
-                                    controller: _aiServerHostController,
-                                    decoration: InputDecoration(
-                                      labelText: 'AI Server Host',
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        borderSide: const BorderSide(
-                                          color: Colors.white30,
-                                        ),
-                                      ),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        borderSide: const BorderSide(
-                                          color: Colors.white30,
-                                        ),
-                                      ),
-                                      filled: true,
-                                      fillColor: AppTheme.surfaceDark
-                                          .withOpacity(0.7),
-                                      labelStyle: const TextStyle(
-                                        color: Colors.white70,
-                                      ),
-                                      prefixIcon: const Icon(
-                                        Icons.computer,
-                                        color: Colors.white70,
-                                      ),
-                                    ),
-                                    style: const TextStyle(color: Colors.white),
-                                    validator: (value) {
-                                      if (value == null || value.isEmpty) {
-                                        return 'Please enter AI Server host';
-                                      }
-                                      return null;
-                                    },
-                                  ),
-                                  const SizedBox(height: 16),
-
-                                  // AI Server Port
-                                  TextFormField(
-                                    controller: _aiServerPortController,
-                                    decoration: InputDecoration(
-                                      labelText: 'AI Server Port',
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        borderSide: const BorderSide(
-                                          color: Colors.white30,
-                                        ),
-                                      ),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        borderSide: const BorderSide(
-                                          color: Colors.white30,
-                                        ),
-                                      ),
-                                      filled: true,
-                                      fillColor: AppTheme.surfaceDark
-                                          .withOpacity(0.7),
-                                      labelStyle: const TextStyle(
-                                        color: Colors.white70,
-                                      ),
-                                      prefixIcon: const Icon(
-                                        Icons.pin,
-                                        color: Colors.white70,
-                                      ),
-                                    ),
-                                    style: const TextStyle(color: Colors.white),
-                                    validator: (value) {
-                                      if (value == null || value.isEmpty) {
-                                        return 'Please enter AI Server port';
-                                      }
-                                      final port = int.tryParse(value);
-                                      if (port == null ||
-                                          port <= 0 ||
-                                          port > 65535) {
-                                        return 'Please enter a valid port number (1-65535)';
-                                      }
-                                      return null;
-                                    },
-                                    keyboardType: TextInputType.number,
-                                  ),
-                                  const SizedBox(height: 16),
-
-                                  // Test AI Server button and result
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: ElevatedButton.icon(
-                                          onPressed:
-                                              _isTesting
-                                                  ? null
-                                                  : _testAiServerConnection,
-                                          icon: const Icon(Icons.biotech),
-                                          label: Text(
-                                            _isTesting
-                                                ? 'Testing...'
-                                                : 'Test AI Server',
-                                          ),
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor:
-                                                AppTheme.primaryColor,
-                                            padding: const EdgeInsets.symmetric(
-                                              vertical: 12,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 16),
-                                      Expanded(
-                                        child: Container(
-                                          padding: const EdgeInsets.all(12),
-                                          decoration: BoxDecoration(
-                                            color:
-                                                _aiServerTestResult.contains(
-                                                      'successful',
-                                                    )
-                                                    ? AppTheme.connectedColor
-                                                        .withOpacity(0.2)
-                                                    : _aiServerTestResult
-                                                            .contains(
-                                                              'failed',
-                                                            ) ||
-                                                        _aiServerTestResult
-                                                            .contains('Error')
-                                                    ? AppTheme.disconnectedColor
-                                                        .withOpacity(0.2)
-                                                    : Colors.grey.shade800
-                                                        .withOpacity(0.5),
-                                            borderRadius: BorderRadius.circular(
-                                              12,
-                                            ),
-                                            border: Border.all(
-                                              color:
-                                                  _aiServerTestResult.contains(
-                                                        'successful',
-                                                      )
-                                                      ? AppTheme.connectedColor
-                                                      : _aiServerTestResult
-                                                              .contains(
-                                                                'failed',
-                                                              ) ||
-                                                          _aiServerTestResult
-                                                              .contains('Error')
-                                                      ? AppTheme
-                                                          .disconnectedColor
-                                                      : Colors.grey.shade600,
-                                              width: 1,
-                                            ),
-                                          ),
-                                          child: Text(
-                                            _aiServerTestResult.isEmpty
-                                                ? 'Not tested'
-                                                : _aiServerTestResult,
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                            ),
-                                            textAlign: TextAlign.center,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
+                            SettingCard(
+                              title: 'AI Server Settings',
+                              icon: Icons.memory,
+                              child: ConnectionSetting(
+                                hostController: _aiServerHostController,
+                                portController: _aiServerPortController,
+                                hostLabel: 'AI Server Host',
+                                portLabel: 'AI Server Port',
+                                isTesting: _isTesting,
+                                testResult: _aiServerTestResult,
+                                onTestPressed: _testAiServerConnection,
+                                testButtonLabel: 'Test AI Server',
+                                testIcon: Icons.biotech,
                               ),
                             ),
 
@@ -1080,26 +342,5 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
       ),
     );
-  }
-
-  // Helper methods for speed settings
-  Color _getSpeedColor() {
-    if (_robotSpeed < 0.3) {
-      return Colors.green;
-    } else if (_robotSpeed < 0.7) {
-      return Colors.orange;
-    } else {
-      return Colors.red;
-    }
-  }
-
-  String _getSpeedDescription() {
-    if (_robotSpeed < 0.3) {
-      return 'Safe speed for precision movement';
-    } else if (_robotSpeed < 0.7) {
-      return 'Balanced speed for normal operation';
-    } else {
-      return 'High speed - use with caution!';
-    }
   }
 }

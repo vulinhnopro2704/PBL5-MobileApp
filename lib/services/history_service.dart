@@ -1,187 +1,146 @@
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/history_item.dart';
-import '../config/env_config.dart';
+import '../models/firebase_models.dart';
 import 'log_service.dart';
 
 class HistoryService {
-  static const String _localHistoryKey = 'robot_history';
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final String _collection = 'detections';
+  final int _pageSize = 20;
 
-  // Fetch history from server or local storage
+  // Fetch initial history batch from Firestore
   Future<List<HistoryItem>> getHistory() async {
     try {
-      // Try to fetch from server first
-      final serverHistory = await _fetchHistoryFromServer();
-      if (serverHistory.isNotEmpty) {
-        // Cache the results locally
-        await _saveHistoryLocally(serverHistory);
-        return serverHistory;
-      }
+      final querySnapshot =
+          await _firestore
+              .collection(_collection)
+              .orderBy('timestamp', descending: true)
+              .limit(_pageSize)
+              .get();
 
-      // Fall back to local cache if server fetch fails
-      return await _fetchHistoryFromLocal();
+      return _processQuerySnapshot(querySnapshot);
     } catch (e) {
-      LogService.error('Error fetching history', e);
-      // Try local storage as fallback
-      return await _fetchHistoryFromLocal();
+      LogService.error('Error fetching history from Firestore', e);
+      return [];
     }
   }
 
-  // Add a new history item
-  Future<bool> addHistoryItem(HistoryItem item) async {
+  // Fetch next page of history items
+  Future<List<HistoryItem>> getNextPage(HistoryItem lastItem) async {
     try {
-      // Try to save to server
-      final success = await _addHistoryItemToServer(item);
+      final querySnapshot =
+          await _firestore
+              .collection(_collection)
+              .orderBy('timestamp', descending: true)
+              .startAfter([
+                Timestamp.fromMillisecondsSinceEpoch(
+                  lastItem.timestamp.millisecondsSinceEpoch,
+                ),
+              ])
+              .limit(_pageSize)
+              .get();
 
-      if (success) {
-        // Also update local cache
-        final history = await _fetchHistoryFromLocal();
-        history.insert(0, item); // Add at beginning
-        await _saveHistoryLocally(history);
-      }
-
-      return success;
+      return _processQuerySnapshot(querySnapshot);
     } catch (e) {
-      LogService.error('Error adding history item', e);
-
-      // Try to save locally even if server fails
-      try {
-        final history = await _fetchHistoryFromLocal();
-        history.insert(0, item);
-        await _saveHistoryLocally(history);
-        return true;
-      } catch (_) {
-        return false;
-      }
+      LogService.error('Error fetching next history page', e);
+      return [];
     }
   }
 
-  // Clear history
+  // Process Firestore query snapshot into history items
+  List<HistoryItem> _processQuerySnapshot(QuerySnapshot snapshot) {
+    return snapshot.docs.map((doc) {
+      try {
+        // Convert to our strongly-typed Firebase model
+        final firebaseItem = FirebaseHistoryItem.fromDoc(doc);
+        LogService.info('Processing history item: ${doc.id}');
+
+        // Log the structured data for debugging
+        LogService.debug(
+          'Processed Firebase item',
+          'ID: ${firebaseItem.id}, Detections: ${firebaseItem.detections.length}',
+        );
+
+        // Convert to app's HistoryItem model
+        return _convertToHistoryItem(firebaseItem);
+      } catch (e, stackTrace) {
+        LogService.error(
+          'Error processing history document: ${doc.id}',
+          e,
+          stackTrace,
+        );
+        // Return an empty history item if processing fails
+        return HistoryItem(
+          id: doc.id,
+          timestamp: DateTime.now(),
+          eventType: HistoryEventType.objectDetected,
+          imageUrl: '',
+          description: 'Error processing data',
+          success: false,
+        );
+      }
+    }).toList();
+  }
+
+  // Convert Firebase model to app's HistoryItem model
+  HistoryItem _convertToHistoryItem(FirebaseHistoryItem item) {
+    // Log raw detection data for debugging
+    LogService.debug(
+      'Converting Firebase detections to app format',
+      'Count: ${item.detections.length}, Sample: ${item.detections.isNotEmpty ? item.detections.first.toMap() : "none"}',
+    );
+
+    // Prepare detection data in the format expected by the app
+    final detectionData = <String, dynamic>{
+      'objects':
+          item.detections.map((detection) {
+            final map = detection.toMap();
+            LogService.debug('Mapped detection', 'Bbox: ${map['bbox']}');
+            return map;
+          }).toList(),
+    };
+
+    return HistoryItem(
+      id: item.id,
+      timestamp: item.timestamp,
+      eventType: HistoryEventType.objectDetected,
+      imageUrl: item.imageUrl,
+      detectionData: detectionData,
+      description: _generateDescription(item.detections),
+      success: item.detections.isNotEmpty,
+    );
+  }
+
+  // Generate a description based on detected objects
+  String _generateDescription(List<FirebaseDetection> detections) {
+    if (detections.isEmpty) {
+      return 'No objects detected';
+    }
+
+    // Count occurrences of each class
+    final Map<String, int> classCount = {};
+    for (final detection in detections) {
+      final className = detection.className;
+      classCount[className] = (classCount[className] ?? 0) + 1;
+    }
+
+    // Build description string
+    final StringBuffer description = StringBuffer('Detected: ');
+    bool isFirst = true;
+
+    classCount.forEach((className, count) {
+      if (!isFirst) description.write(', ');
+      description.write('$count $className');
+      isFirst = false;
+    });
+
+    return description.toString();
+  }
+
+  // Clear history is not supported with Firestore in this implementation
   Future<bool> clearHistory() async {
-    try {
-      // Clear from server
-      final success = await _clearHistoryFromServer();
-
-      // Also clear local cache regardless of server result
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(_localHistoryKey);
-
-      return success;
-    } catch (e) {
-      LogService.error('Error clearing history', e);
-
-      // Try to clear locally even if server fails
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.remove(_localHistoryKey);
-        return true;
-      } catch (_) {
-        return false;
-      }
-    }
-  }
-
-  // Private method to fetch history from server
-  Future<List<HistoryItem>> _fetchHistoryFromServer() async {
-    try {
-      final response = await http
-          .get(Uri.parse('${EnvConfig.apiBaseUrl}/history'))
-          .timeout(const Duration(seconds: 10));
-
-      if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body);
-        return data.map((item) => HistoryItem.fromJson(item)).toList();
-      }
-      return [];
-    } catch (e) {
-      LogService.error('Server history fetch failed', e);
-      return [];
-    }
-  }
-
-  // Private method to fetch history from local storage
-  Future<List<HistoryItem>> _fetchHistoryFromLocal() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final historyJson = prefs.getString(_localHistoryKey);
-
-      if (historyJson != null) {
-        final List<dynamic> data = jsonDecode(historyJson);
-        return data.map((item) => HistoryItem.fromJson(item)).toList();
-      }
-      return [];
-    } catch (e) {
-      LogService.error('Local history fetch failed', e);
-      return [];
-    }
-  }
-
-  // Private method to save history to local storage
-  Future<void> _saveHistoryLocally(List<HistoryItem> history) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-
-      // Convert history items to JSON
-      final List<Map<String, dynamic>> historyJson =
-          history
-              .map(
-                (item) => {
-                  'id': item.id,
-                  'timestamp': item.timestamp.toIso8601String(),
-                  'event_type': item.eventType.toString().split('.').last,
-                  'image_url': item.imageUrl,
-                  'detection_data': item.detectionData,
-                  'description': item.description,
-                  'success': item.success,
-                },
-              )
-              .toList();
-
-      await prefs.setString(_localHistoryKey, jsonEncode(historyJson));
-    } catch (e) {
-      LogService.error('Failed to save history locally', e);
-    }
-  }
-
-  // Private method to add history item to server
-  Future<bool> _addHistoryItemToServer(HistoryItem item) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('${EnvConfig.apiBaseUrl}/history'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'id': item.id,
-              'timestamp': item.timestamp.toIso8601String(),
-              'event_type': item.eventType.toString().split('.').last,
-              'image_url': item.imageUrl,
-              'detection_data': item.detectionData,
-              'description': item.description,
-              'success': item.success,
-            }),
-          )
-          .timeout(const Duration(seconds: 10));
-
-      return response.statusCode == 200 || response.statusCode == 201;
-    } catch (e) {
-      LogService.error('Failed to add history item to server', e);
-      return false;
-    }
-  }
-
-  // Private method to clear history from server
-  Future<bool> _clearHistoryFromServer() async {
-    try {
-      final response = await http
-          .delete(Uri.parse('${EnvConfig.apiBaseUrl}/history'))
-          .timeout(const Duration(seconds: 10));
-
-      return response.statusCode == 200;
-    } catch (e) {
-      LogService.error('Failed to clear server history', e);
-      return false;
-    }
+    LogService.warning('Clearing Firestore history is not implemented');
+    return false;
   }
 }

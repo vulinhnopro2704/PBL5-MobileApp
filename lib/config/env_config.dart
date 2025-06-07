@@ -5,11 +5,6 @@ class EnvConfig {
   // Store resolved IP for raspberrypi.local
   static String? _resolvedRaspberryPiIP;
 
-  // API settings
-  static String get apiHost => dotenv.env['API_HOST'] ?? 'localhost';
-  static String get apiPort => dotenv.env['API_PORT'] ?? '8000';
-  static String get apiBaseUrl => 'http://$apiHost:$apiPort';
-
   // WebSocket settings
   static String get wsHost => dotenv.env['WS_HOST'] ?? 'localhost';
   static String get wsPort => dotenv.env['WS_PORT'] ?? '8080';

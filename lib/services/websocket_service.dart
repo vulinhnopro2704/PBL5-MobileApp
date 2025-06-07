@@ -5,6 +5,7 @@ import 'package:rxdart/subjects.dart';
 
 import '../config/env_config.dart';
 import '../constants/command_types.dart';
+import '../utils/network_utils.dart';
 import 'log_service.dart';
 
 class WebSocketService {
@@ -43,35 +44,99 @@ class WebSocketService {
     _reconnectTimer?.cancel();
 
     try {
-      LogService.info('Connecting to WebSocket server: ${EnvConfig.wsUrl}');
+      // Resolve the Raspberry Pi's mDNS address
+      String wsUrl = EnvConfig.wsUrl;
 
-      _channel = WebSocketChannel.connect(Uri.parse(EnvConfig.wsUrl));
+      // Check if the URL contains .local and needs resolution
+      if (wsUrl.contains('.local')) {
+        LogService.info('mDNS address detected in WebSocket URL, resolving...');
+
+        final String? resolvedIP = await NetworkUtils.resolveRaspberryPiLocal();
+        if (resolvedIP == null) {
+          LogService.error('Failed to resolve Raspberry Pi address');
+          _handleDisconnection();
+          return false;
+        }
+
+        // Replace the .local hostname with the resolved IP
+        final Uri originalUri = Uri.parse(wsUrl);
+        wsUrl = wsUrl.replaceFirst(originalUri.host, resolvedIP);
+
+        LogService.info('Resolved WebSocket URL: $wsUrl');
+      }
+
+      LogService.info('Connecting to WebSocket server: $wsUrl');
+
+      // Create a completer to handle the connection timeout
+      final completer = Completer<bool>();
+
+      // Set up a connection timeout
+      final timeoutTimer = Timer(const Duration(seconds: 5), () {
+        if (!completer.isCompleted) {
+          LogService.error('WebSocket connection timeout');
+          completer.complete(false);
+        }
+      });
+
+      _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
+
+      // Test the connection with a ping message
+      bool receivedPong = false;
 
       // Listen for messages
       _channel!.stream.listen(
         (message) {
+          if (!receivedPong && !completer.isCompleted) {
+            receivedPong = true;
+            timeoutTimer.cancel();
+            completer.complete(true);
+          }
           _handleMessage(message);
         },
         onDone: () {
           LogService.info('WebSocket connection closed');
+          if (!completer.isCompleted) {
+            completer.complete(false);
+          }
           _handleDisconnection();
         },
         onError: (error) {
           LogService.error('WebSocket error', error);
+          if (!completer.isCompleted) {
+            completer.complete(false);
+          }
           _handleDisconnection();
         },
       );
 
-      // Wait for a brief moment to ensure connection is established
-      await Future.delayed(const Duration(milliseconds: 100));
+      // Send a ping to verify connection
+      try {
+        _channel!.sink.add(jsonEncode({'ping': true}));
+      } catch (e) {
+        LogService.error('Error sending ping', e);
+        if (!completer.isCompleted) {
+          timeoutTimer.cancel();
+          completer.complete(false);
+        }
+      }
 
-      // Update connection status
-      _isConnected = true;
+      // Wait for the connection to be established or timeout
+      final connected = await completer.future;
+
+      // Update connection status based on actual connection
+      _isConnected = connected;
       _connectionStatusController.add(_isConnected);
-      _reconnectAttempt = 0;
 
-      LogService.info('Connected to WebSocket server');
-      return true;
+      if (connected) {
+        _reconnectAttempt = 0;
+        LogService.info('Successfully connected to WebSocket server');
+      } else {
+        LogService.error('Failed to establish WebSocket connection');
+        _channel?.sink.close();
+        _channel = null;
+      }
+
+      return connected;
     } catch (e) {
       LogService.error('Failed to connect to WebSocket server', e);
       _handleDisconnection();
@@ -128,29 +193,49 @@ class WebSocketService {
 
       // Parse the message
       if (message is String) {
-        final data = jsonDecode(message);
-        _messageController.add(data);
+        try {
+          final data = jsonDecode(message);
+          _messageController.add(data);
 
-        // Update robot state based on received data
-        if (data is Map) {
-          if (data.containsKey('binStatus')) {
-            _binStatus = data['binStatus'];
+          // Update robot state based on received data
+          if (data is Map) {
+            if (data.containsKey('binStatus')) {
+              _binStatus = data['binStatus'];
+            }
+            if (data.containsKey('isAutoMode')) {
+              _isAutoMode = data['isAutoMode'];
+            }
+            if (data.containsKey('speed')) {
+              _speed = data['speed'];
+            }
+            if (data.containsKey('isPoweredOn')) {
+              _isPoweredOn = data['isPoweredOn'];
+            }
+
+            // Also update speed if it comes from a move command
+            if (data.containsKey('status') &&
+                data['status'] == 'success' &&
+                data.containsKey('direction') &&
+                data.containsKey('speed')) {
+              _speed = data['speed'];
+            }
+
+            // Log detailed response information
+            if (data.containsKey('status')) {
+              final status = data['status'];
+              final action = data['action'] ?? data['direction'] ?? 'unknown';
+              LogService.info('Robot response: $status - $action');
+            }
           }
-          if (data.containsKey('isAutoMode')) {
-            _isAutoMode = data['isAutoMode'];
-          }
-          if (data.containsKey('speed')) {
-            _speed = data['speed'];
-          }
-          if (data.containsKey('isPoweredOn')) {
-            _isPoweredOn = data['isPoweredOn'];
-          }
+        } catch (e) {
+          LogService.error('Error parsing JSON message', e);
+          _messageController.add(message);
         }
       } else {
         _messageController.add(message);
       }
     } catch (e) {
-      LogService.error('Error parsing WebSocket message', e);
+      LogService.error('Error handling WebSocket message', e);
     }
   }
 

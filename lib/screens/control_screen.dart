@@ -2,14 +2,18 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 
 import '../services/websocket_service.dart';
 import '../services/log_service.dart';
-import '../services/api_service.dart';
-import '../widgets/control_button.dart';
+import '../services/ai_service.dart';
+
 import '../config/app_theme.dart';
 import '../constants/command_types.dart';
+import '../widgets/control/connection_status_card.dart';
+import '../widgets/control/robot_response_card.dart';
+import '../widgets/control/camera_panel.dart';
+import '../widgets/control/control_buttons_panel.dart';
+import '../widgets/control/simple_grab_button.dart';
 
 class ControlScreen extends StatefulWidget {
   const ControlScreen({super.key});
@@ -21,7 +25,7 @@ class ControlScreen extends StatefulWidget {
 class _ControlScreenState extends State<ControlScreen>
     with TickerProviderStateMixin {
   final WebSocketService _webSocketService = WebSocketService();
-  final ApiService _apiService = ApiService();
+  final AiService _aiService = AiService();
 
   // Stream subscriptions to be managed
   StreamSubscription? _messageSubscription;
@@ -32,7 +36,6 @@ class _ControlScreenState extends State<ControlScreen>
   late AnimationController _connectionAnimController;
 
   // For enabling long-press functionality
-  bool _isHoldingButton = false;
   String? _activeCommand;
   Timer? _commandTimer;
 
@@ -42,6 +45,10 @@ class _ControlScreenState extends State<ControlScreen>
   bool _isDetecting = false;
   List<Map<String, dynamic>> _detectedObjects = [];
   bool _showCamera = false; // Toggle to show/hide camera panel
+
+  // Add this new property to store the latest response from the robot
+  Map<String, dynamic>? _lastRobotResponse;
+  Timer? _responseDisplayTimer;
 
   @override
   void initState() {
@@ -60,8 +67,20 @@ class _ControlScreenState extends State<ControlScreen>
       if (mounted) {
         // Check if the widget is still in the tree
         setState(() {
-          // Example: parse status message
-          if (message is String && message.contains('status')) {
+          // Store the latest response
+          if (message is Map<String, dynamic>) {
+            _lastRobotResponse = message;
+
+            // Clear the response after a few seconds
+            _responseDisplayTimer?.cancel();
+            _responseDisplayTimer = Timer(const Duration(seconds: 5), () {
+              if (mounted) {
+                setState(() {
+                  _lastRobotResponse = null;
+                });
+              }
+            });
+          } else if (message is String && message.contains('status')) {
             _status = 'Connected: $message';
           }
         });
@@ -96,7 +115,25 @@ class _ControlScreenState extends State<ControlScreen>
     _webSocketService.dispose();
     _connectionAnimController.dispose();
     _stopContinuousCommand();
+    _responseDisplayTimer?.cancel();
     super.dispose();
+  }
+
+  // Stop any continuous commands in progress
+  void _stopContinuousCommand() {
+    // Cancel command timer if it exists
+    _commandTimer?.cancel();
+    _commandTimer = null;
+
+    // Reset command state
+    setState(() {
+      _activeCommand = null;
+    });
+
+    // Send stop command to robot if needed
+    if (_webSocketService.isConnected) {
+      _webSocketService.sendCommand(DirectionCommand.stop.value);
+    }
   }
 
   Future<void> _connectWebSocket() async {
@@ -106,17 +143,65 @@ class _ControlScreenState extends State<ControlScreen>
       _connectionAnimController.repeat();
     });
 
-    final bool connected = await _webSocketService.connect();
+    try {
+      final bool connected = await _webSocketService.connect();
 
-    setState(() {
-      _isConnecting = false;
-      _status = connected ? 'Connected' : 'Connection failed';
-      if (connected) {
-        _connectionAnimController.stop();
-      } else {
-        _connectionAnimController.reset();
+      if (mounted) {
+        setState(() {
+          _isConnecting = false;
+          _status = connected ? 'Connected' : 'Connection failed';
+          if (connected) {
+            _connectionAnimController.stop();
+          } else {
+            _connectionAnimController.reset();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Row(
+                  children: [
+                    const Icon(Icons.error_outline, color: Colors.white),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Could not connect to the robot. Please check if the robot is powered on and connected to the network.',
+                        style: AppTheme.bodyStyle,
+                      ),
+                    ),
+                  ],
+                ),
+                backgroundColor: AppTheme.errorColor,
+                duration: const Duration(seconds: 5),
+              ),
+            );
+          }
+        });
       }
-    });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isConnecting = false;
+          _status = 'Connection error';
+          _connectionAnimController.reset();
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.error_outline, color: Colors.white),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Connection error: ${e.toString()}',
+                      style: AppTheme.bodyStyle,
+                    ),
+                  ),
+                ],
+              ),
+              backgroundColor: AppTheme.errorColor,
+            ),
+          );
+        });
+      }
+    }
   }
 
   void _sendCommand(String command) {
@@ -131,7 +216,13 @@ class _ControlScreenState extends State<ControlScreen>
             children: [
               const Icon(Icons.error_outline, color: Colors.white),
               const SizedBox(width: 8),
-              Text('Not connected to server', style: AppTheme.bodyStyle),
+              Expanded(
+                child: Text(
+                  'Not connected to server',
+                  style: AppTheme.bodyStyle,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ],
           ),
           backgroundColor: AppTheme.errorColor,
@@ -149,58 +240,21 @@ class _ControlScreenState extends State<ControlScreen>
       return;
     }
 
+    // Check if this is a continuous command that requires holding
+    if (command == DirectionCommand.forward.value ||
+        command == DirectionCommand.backward.value ||
+        command == DirectionCommand.left.value ||
+        command == DirectionCommand.right.value) {
+      setState(() {
+        _activeCommand = command;
+      });
+    }
+
     // Send command to websocket service
     _webSocketService.sendCommand(command);
 
-    // Record trash grab events
-    if (command == ActionCommand.grabTrash.value) {
-      _apiService.recordTrashGrab(
-        success: true,
-        imageUrl: _imageUrl,
-        description: 'User initiated trash grab operation',
-      );
-    }
-
     // Provide haptic feedback
     HapticFeedback.mediumImpact();
-  }
-
-  // For continuous commands (holding a button)
-  void _startContinuousCommand(String command) {
-    if (_isHoldingButton) return;
-
-    setState(() {
-      _isHoldingButton = true;
-      _activeCommand = command;
-    });
-
-    _sendCommand(command);
-
-    // Send the command repeatedly while button is held
-    _commandTimer = Timer.periodic(const Duration(milliseconds: 200), (timer) {
-      if (_isHoldingButton) {
-        _sendCommand(command);
-      } else {
-        timer.cancel();
-      }
-    });
-  }
-
-  void _stopContinuousCommand() {
-    if (_commandTimer != null) {
-      _commandTimer!.cancel();
-      _commandTimer = null;
-    }
-
-    if (_isHoldingButton && _activeCommand != null) {
-      _sendCommand(
-        'stop',
-      ); // Send stop command when releasing a movement button
-      setState(() {
-        _isHoldingButton = false;
-        _activeCommand = null;
-      });
-    }
   }
 
   Future<void> _captureImage() async {
@@ -210,7 +264,64 @@ class _ControlScreenState extends State<ControlScreen>
     });
 
     try {
-      final imageUrl = await _apiService.captureImage();
+      // Create a completer to handle the async response
+      final completer = Completer<String?>();
+
+      // Store the current subscription to avoid memory leaks
+      StreamSubscription? cameraResponseSubscription;
+
+      // Set a timeout
+      final timeoutTimer = Timer(const Duration(seconds: 10), () {
+        if (!completer.isCompleted) {
+          LogService.warning('Camera capture timed out');
+          cameraResponseSubscription?.cancel();
+          completer.complete(null);
+        }
+      });
+
+      // Listen for the camera response from WebSocket
+      cameraResponseSubscription = _webSocketService.messageStream.listen((
+        message,
+      ) {
+        if (message is Map<String, dynamic> &&
+            message['status'] == 'success' &&
+            message['message'] == 'Take picture' &&
+            message.containsKey('response')) {
+          // Cancel the timeout
+          timeoutTimer.cancel();
+
+          // Extract image URL from the response
+          final response = message['response'];
+          String? imageUrl;
+
+          if (response is Map<String, dynamic> &&
+              response.containsKey('imageUrl')) {
+            imageUrl = response['imageUrl'] as String?;
+          } else if (response is Map<String, dynamic> &&
+              response.containsKey('url')) {
+            imageUrl = response['url'] as String?;
+          }
+
+          if (!completer.isCompleted) {
+            LogService.info('Received camera image: $imageUrl');
+            completer.complete(imageUrl);
+          }
+
+          // We can cancel the subscription now
+          cameraResponseSubscription?.cancel();
+        }
+      });
+
+      // Send the take_picture command via WebSocket
+      _webSocketService.sendCommand('take_picture');
+      LogService.info('Sent take_picture command via WebSocket');
+
+      // Wait for the response or timeout
+      final imageUrl = await completer.future;
+
+      // Clean up
+      timeoutTimer.cancel();
+      cameraResponseSubscription.cancel();
 
       // Check if widget is still mounted before updating state
       if (!mounted) return;
@@ -220,6 +331,13 @@ class _ControlScreenState extends State<ControlScreen>
         _isCameraLoading = false;
         if (imageUrl != null) {
           _showCamera = true; // Show camera panel when image is captured
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to capture image or no image returned'),
+              backgroundColor: Colors.orange,
+            ),
+          );
         }
       });
     } catch (e) {
@@ -258,7 +376,8 @@ class _ControlScreenState extends State<ControlScreen>
     });
 
     try {
-      final result = await _apiService.detectObjects();
+      // Use AI service for detection
+      final result = await _aiService.detectObjects(imageUrl: _imageUrl);
 
       // Check if widget is still mounted before updating state
       if (!mounted) return;
@@ -324,301 +443,36 @@ class _ControlScreenState extends State<ControlScreen>
             child: Column(
               children: [
                 // Status card
-                Container(
-                  decoration: AppTheme.cardDecoration,
-                  padding: const EdgeInsets.all(16.0),
-                  child: Row(
-                    children: [
-                      _isConnecting
-                          ? SizedBox(
-                            width: 32,
-                            height: 32,
-                            child: CircularProgressIndicator(
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                AppTheme.connectingColor,
-                              ),
-                              strokeWidth: 3,
-                            ),
-                          )
-                          : Icon(
-                            _webSocketService.isConnected
-                                ? Icons.wifi
-                                : Icons.wifi_off,
-                            color:
-                                _webSocketService.isConnected
-                                    ? AppTheme.connectedColor
-                                    : AppTheme.disconnectedColor,
-                            size: 32,
-                          ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Connection Status',
-                              style: AppTheme.subheadingStyle,
-                            ),
-                            Text(_status, style: AppTheme.bodyStyle),
-                          ],
-                        ),
-                      ),
-                      ElevatedButton.icon(
-                        onPressed: _isConnecting ? null : _connectWebSocket,
-                        icon: const Icon(Icons.refresh),
-                        label: Text(
-                          _isConnecting ? 'Connecting...' : 'Reconnect',
-                          style: AppTheme.buttonTextStyle,
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.primaryColor,
-                          disabledBackgroundColor: AppTheme.primaryColor
-                              .withOpacity(0.6),
-                        ),
-                      ),
-                    ],
-                  ),
+                ConnectionStatusCard(
+                  isConnected: _webSocketService.isConnected,
+                  isConnecting: _isConnecting,
+                  status: _status,
+                  onReconnect: _connectWebSocket,
                 ),
+
+                // Add Robot Response Card if there's a response
+                if (_lastRobotResponse != null) ...[
+                  const SizedBox(height: 8),
+                  RobotResponseCard(response: _lastRobotResponse!),
+                ],
 
                 const SizedBox(height: 16),
 
                 // Camera and AI controls section
                 if (_showCamera) ...[
                   Expanded(
-                    child: Container(
-                      decoration: AppTheme.cardDecoration,
-                      padding: const EdgeInsets.all(12.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          // Title with close button
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Row(
-                                children: [
-                                  const Icon(Icons.camera, color: Colors.white),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'Camera & AI',
-                                    style: AppTheme.subheadingStyle,
-                                  ),
-                                ],
-                              ),
-                              IconButton(
-                                icon: const Icon(
-                                  Icons.close,
-                                  color: Colors.white70,
-                                ),
-                                onPressed: () {
-                                  setState(() {
-                                    _showCamera = false;
-                                  });
-                                },
-                                iconSize: 20,
-                                splashRadius: 20,
-                              ),
-                            ],
-                          ),
-                          const Divider(color: Colors.white24),
-
-                          // Make the rest of the content scrollable
-                          Expanded(
-                            child: SingleChildScrollView(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  // Image display area
-                                  AspectRatio(
-                                    aspectRatio: 4 / 3,
-                                    child: Container(
-                                      decoration: BoxDecoration(
-                                        color: Colors.black38,
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child:
-                                          _isCameraLoading
-                                              ? const Center(
-                                                child:
-                                                    CircularProgressIndicator(),
-                                              )
-                                              : _imageUrl != null
-                                              ? Stack(
-                                                children: [
-                                                  // Image
-                                                  ClipRRect(
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          8,
-                                                        ),
-                                                    child: CachedNetworkImage(
-                                                      imageUrl: _imageUrl!,
-                                                      fit: BoxFit.cover,
-                                                      width: double.infinity,
-                                                      placeholder:
-                                                          (
-                                                            context,
-                                                            url,
-                                                          ) => const Center(
-                                                            child:
-                                                                CircularProgressIndicator(),
-                                                          ),
-                                                      errorWidget:
-                                                          (
-                                                            context,
-                                                            url,
-                                                            error,
-                                                          ) => const Center(
-                                                            child: Icon(
-                                                              Icons.error,
-                                                              color: Colors.red,
-                                                              size: 50,
-                                                            ),
-                                                          ),
-                                                    ),
-                                                  ),
-
-                                                  // Object detection boxes
-                                                  if (_detectedObjects
-                                                      .isNotEmpty)
-                                                    Positioned.fill(
-                                                      child: CustomPaint(
-                                                        painter:
-                                                            ObjectDetectionPainter(
-                                                              objects:
-                                                                  _detectedObjects,
-                                                            ),
-                                                      ),
-                                                    ),
-
-                                                  // Loading overlay when detecting
-                                                  if (_isDetecting)
-                                                    Positioned.fill(
-                                                      child: Container(
-                                                        color: Colors.black54,
-                                                        child: const Center(
-                                                          child: Column(
-                                                            mainAxisSize:
-                                                                MainAxisSize
-                                                                    .min,
-                                                            children: [
-                                                              CircularProgressIndicator(),
-                                                              SizedBox(
-                                                                height: 16,
-                                                              ),
-                                                              Text(
-                                                                'Detecting objects...',
-                                                                style: TextStyle(
-                                                                  color:
-                                                                      Colors
-                                                                          .white,
-                                                                ),
-                                                              ),
-                                                            ],
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ),
-                                                ],
-                                              )
-                                              : const Center(
-                                                child: Text(
-                                                  'No image captured',
-                                                  style: TextStyle(
-                                                    color: Colors.white70,
-                                                  ),
-                                                ),
-                                              ),
-                                    ),
-                                  ),
-
-                                  const SizedBox(height: 12),
-
-                                  // Camera control buttons
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: ElevatedButton.icon(
-                                          onPressed:
-                                              _isCameraLoading
-                                                  ? null
-                                                  : _captureImage,
-                                          icon: const Icon(Icons.camera_alt),
-                                          label: Text(
-                                            _isCameraLoading
-                                                ? 'Capturing...'
-                                                : 'Capture Image',
-                                            style: AppTheme.buttonTextStyle,
-                                          ),
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor:
-                                                AppTheme.primaryColor,
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: ElevatedButton.icon(
-                                          onPressed:
-                                              _isDetecting || _imageUrl == null
-                                                  ? null
-                                                  : _detectObjects,
-                                          icon: const Icon(Icons.search),
-                                          label: Text(
-                                            _isDetecting
-                                                ? 'Detecting...'
-                                                : 'Detect Objects',
-                                            style: AppTheme.buttonTextStyle,
-                                          ),
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor:
-                                                AppTheme.accentColor,
-                                            foregroundColor: Colors.black87,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-
-                                  // Display detection results
-                                  if (_detectedObjects.isNotEmpty) ...[
-                                    const SizedBox(height: 8),
-                                    Wrap(
-                                      spacing: 8,
-                                      runSpacing: 8,
-                                      children:
-                                          _detectedObjects.map((obj) {
-                                            final String label =
-                                                obj['class'] ?? 'Unknown';
-                                            final double confidence =
-                                                obj['confidence'] ?? 0.0;
-                                            final Color chipColor =
-                                                _getClassColor(label);
-
-                                            return Chip(
-                                              label: Text(
-                                                '$label (${(confidence * 100).toStringAsFixed(1)}%)',
-                                                style: const TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 12,
-                                                ),
-                                              ),
-                                              backgroundColor: chipColor,
-                                              avatar: Icon(
-                                                _getClassIcon(label),
-                                                color: Colors.white,
-                                                size: 16,
-                                              ),
-                                            );
-                                          }).toList(),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                    child: CameraPanel(
+                      imageUrl: _imageUrl,
+                      isCameraLoading: _isCameraLoading,
+                      isDetecting: _isDetecting,
+                      detectedObjects: _detectedObjects,
+                      onCapture: _captureImage,
+                      onDetect: _detectObjects,
+                      onClose: () {
+                        setState(() {
+                          _showCamera = false;
+                        });
+                      },
                     ),
                   ),
 
@@ -628,150 +482,9 @@ class _ControlScreenState extends State<ControlScreen>
                 // Control buttons
                 if (!_showCamera)
                   Expanded(
-                    child: SingleChildScrollView(
-                      child: Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const SizedBox(height: 12),
-                            // Forward button
-                            GestureDetector(
-                              onLongPress:
-                                  () => _startContinuousCommand(
-                                    DirectionCommand.forward.value,
-                                  ),
-                              onLongPressEnd: (_) => _stopContinuousCommand(),
-                              child: ControlButton(
-                                icon: Icons.arrow_upward,
-                                label: 'Forward',
-                                onPressed:
-                                    () => _sendCommand(
-                                      DirectionCommand.forward.value,
-                                    ),
-                                color: AppTheme.forwardButtonColor,
-                                isPressed:
-                                    _activeCommand ==
-                                    DirectionCommand.forward.value,
-                              ),
-                            ),
-
-                            const SizedBox(height: 16),
-
-                            // Left, Stop, Right buttons in a row
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                GestureDetector(
-                                  onLongPress:
-                                      () => _startContinuousCommand(
-                                        DirectionCommand.left.value,
-                                      ),
-                                  onLongPressEnd:
-                                      (_) => _stopContinuousCommand(),
-                                  child: ControlButton(
-                                    icon: Icons.arrow_back,
-                                    label: 'Left',
-                                    onPressed:
-                                        () => _sendCommand(
-                                          DirectionCommand.left.value,
-                                        ),
-                                    color: AppTheme.leftButtonColor,
-                                    isPressed:
-                                        _activeCommand ==
-                                        DirectionCommand.left.value,
-                                  ),
-                                ),
-                                const SizedBox(width: 16),
-                                ControlButton(
-                                  icon: Icons.stop_circle,
-                                  label: 'Stop',
-                                  onPressed:
-                                      () => _sendCommand(
-                                        DirectionCommand.stop.value,
-                                      ),
-                                  color: AppTheme.stopButtonColor,
-                                  isPressed: false,
-                                  isGlowing: true,
-                                ),
-                                const SizedBox(width: 16),
-                                GestureDetector(
-                                  onLongPress:
-                                      () => _startContinuousCommand(
-                                        DirectionCommand.right.value,
-                                      ),
-                                  onLongPressEnd:
-                                      (_) => _stopContinuousCommand(),
-                                  child: ControlButton(
-                                    icon: Icons.arrow_forward,
-                                    label: 'Right',
-                                    onPressed:
-                                        () => _sendCommand(
-                                          DirectionCommand.right.value,
-                                        ),
-                                    color: AppTheme.rightButtonColor,
-                                    isPressed:
-                                        _activeCommand ==
-                                        DirectionCommand.right.value,
-                                  ),
-                                ),
-                              ],
-                            ),
-
-                            const SizedBox(height: 16),
-
-                            // Backward button
-                            GestureDetector(
-                              onLongPress:
-                                  () => _startContinuousCommand(
-                                    DirectionCommand.backward.value,
-                                  ),
-                              onLongPressEnd: (_) => _stopContinuousCommand(),
-                              child: ControlButton(
-                                icon: Icons.arrow_downward,
-                                label: 'Backward',
-                                onPressed:
-                                    () => _sendCommand(
-                                      DirectionCommand.backward.value,
-                                    ),
-                                color: AppTheme.backwardButtonColor,
-                                isPressed:
-                                    _activeCommand ==
-                                    DirectionCommand.backward.value,
-                              ),
-                            ),
-
-                            const SizedBox(height: 20),
-
-                            // Action buttons row
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                ControlButton(
-                                  icon: Icons.rotate_right,
-                                  label: 'Rotate Bin',
-                                  onPressed:
-                                      () => _sendCommand(
-                                        ActionCommand.rotateBin.value,
-                                      ),
-                                  color: AppTheme.rotateButtonColor,
-                                ),
-                                const SizedBox(width: 24),
-                                ControlButton(
-                                  icon: Icons.pan_tool,
-                                  label: 'Grab Trash',
-                                  onPressed:
-                                      () => _sendCommand(
-                                        ActionCommand.grabTrash.value,
-                                      ),
-                                  color: AppTheme.grabButtonColor,
-                                  isLarge: true,
-                                  isGlowing: true,
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
+                    child: ControlButtonsPanel(
+                      onSendCommand: _sendCommand,
+                      activeCommand: _activeCommand,
                     ),
                   ),
 
@@ -779,24 +492,7 @@ class _ControlScreenState extends State<ControlScreen>
                 if (_showCamera)
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      ControlButton(
-                        icon: Icons.stop_circle,
-                        label: 'Stop',
-                        onPressed:
-                            () => _sendCommand(DirectionCommand.stop.value),
-                        color: AppTheme.stopButtonColor,
-                        isGlowing: true,
-                      ),
-                      const SizedBox(width: 16),
-                      ControlButton(
-                        icon: Icons.pan_tool,
-                        label: 'Grab',
-                        onPressed:
-                            () => _sendCommand(ActionCommand.grabTrash.value),
-                        color: AppTheme.grabButtonColor,
-                      ),
-                    ],
+                    children: [SimpleGrabButton(onSendCommand: _sendCommand)],
                   ),
               ],
             ),
@@ -816,129 +512,5 @@ class _ControlScreenState extends State<ControlScreen>
               )
               : null,
     );
-  }
-
-  // Helper methods for object detection visualization
-  IconData _getClassIcon(String className) {
-    switch (className.toLowerCase()) {
-      case 'person':
-        return Icons.person;
-      case 'car':
-      case 'truck':
-      case 'bus':
-        return Icons.directions_car;
-      case 'bottle':
-        return Icons.liquor;
-      case 'cup':
-        return Icons.coffee;
-      case 'chair':
-        return Icons.chair;
-      case 'trash':
-      case 'garbage':
-        return Icons.delete;
-      default:
-        return Icons.widgets;
-    }
-  }
-
-  Color _getClassColor(String className) {
-    switch (className.toLowerCase()) {
-      case 'person':
-        return Colors.blue;
-      case 'car':
-      case 'truck':
-      case 'bus':
-        return Colors.green;
-      case 'bottle':
-      case 'cup':
-        return Colors.orange;
-      case 'trash':
-      case 'garbage':
-        return Colors.red;
-      default:
-        return Colors.purple;
-    }
-  }
-}
-
-// Custom painter for drawing bounding boxes
-class ObjectDetectionPainter extends CustomPainter {
-  final List<Map<String, dynamic>> objects;
-
-  ObjectDetectionPainter({required this.objects});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    for (var obj in objects) {
-      // Get bounding box coordinates (normalized from 0 to 1)
-      final List<dynamic> boxData = obj['bbox'] ?? [0, 0, 0, 0];
-      final double x = boxData[0] * size.width;
-      final double y = boxData[1] * size.height;
-      final double w = boxData[2] * size.width;
-      final double h = boxData[3] * size.height;
-
-      final String label = obj['class'] ?? 'Unknown';
-      final double confidence = obj['confidence'] ?? 0.0;
-
-      // Create rectangle
-      final rect = Rect.fromLTWH(x, y, w, h);
-
-      // Create paint for the box
-      final paint =
-          Paint()
-            ..color = _getBoxColor(label)
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 2.0;
-
-      // Draw box
-      canvas.drawRect(rect, paint);
-
-      // Draw label background
-      final textPaint = Paint()..color = _getBoxColor(label);
-
-      canvas.drawRect(Rect.fromLTWH(x, y - 20, w, 20), textPaint);
-
-      // Draw label text
-      final textSpan = TextSpan(
-        text: ' $label ${(confidence * 100).toStringAsFixed(0)}%',
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 12,
-          fontWeight: FontWeight.bold,
-        ),
-      );
-
-      final textPainter = TextPainter(
-        text: textSpan,
-        textDirection: TextDirection.ltr,
-      );
-
-      textPainter.layout(minWidth: 0, maxWidth: w);
-      textPainter.paint(canvas, Offset(x, y - 18));
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) {
-    return true;
-  }
-
-  Color _getBoxColor(String className) {
-    switch (className.toLowerCase()) {
-      case 'person':
-        return Colors.blue;
-      case 'car':
-      case 'truck':
-      case 'bus':
-        return Colors.green;
-      case 'bottle':
-      case 'cup':
-        return Colors.orange;
-      case 'trash':
-      case 'garbage':
-        return Colors.red;
-      default:
-        return Colors.purple;
-    }
   }
 }

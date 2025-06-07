@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../config/app_theme.dart';
 
@@ -32,7 +31,6 @@ class ControlButton extends StatefulWidget {
 class _ControlButtonState extends State<ControlButton>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
-  late Animation<double> _scaleAnimation;
   late Animation<double> _glowAnimation;
 
   @override
@@ -41,10 +39,6 @@ class _ControlButtonState extends State<ControlButton>
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 300),
-    );
-
-    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.95).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
 
     _glowAnimation = Tween<double>(begin: 1.0, end: 1.5).animate(
@@ -78,81 +72,57 @@ class _ControlButtonState extends State<ControlButton>
     return AnimatedBuilder(
       animation: _animationController,
       builder: (context, child) {
-        return GestureDetector(
-          onTapDown: (_) {
-            _animationController.forward();
-            HapticFeedback.lightImpact();
-          },
-          onTapUp: (_) {
-            if (!widget.isPressed) {
-              _animationController.reverse();
-            }
-            widget.onPressed();
-          },
-          onTapCancel: () {
-            if (!widget.isPressed) {
-              _animationController.reverse();
-            }
-          },
-          child: Transform.scale(
-            scale: widget.isPressed ? _scaleAnimation.value : 1.0,
-            child: Container(
-              width: widget.isLarge ? widget.size * 1.3 : widget.size,
-              height: widget.isLarge ? widget.size * 1.3 : widget.size,
-              decoration: BoxDecoration(
-                color: widget.color ?? AppTheme.primaryColor,
-                borderRadius: BorderRadius.circular(widget.size / 4),
-                boxShadow: [
-                  // Main shadow
-                  BoxShadow(
-                    color: (widget.color ?? AppTheme.primaryColor).withOpacity(
-                      0.4,
-                    ),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
-                  ),
-                  // Glow effect if enabled
-                  if (widget.isGlowing)
-                    BoxShadow(
-                      color: (widget.color ?? AppTheme.primaryColor)
-                          .withOpacity(0.3 * _glowAnimation.value),
-                      blurRadius: 15 * _glowAnimation.value,
-                      spreadRadius: 1 * _glowAnimation.value,
-                    ),
-                ],
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    (widget.color ?? AppTheme.primaryColor).withOpacity(1),
-                    (widget.color ?? AppTheme.primaryColor).withOpacity(0.8),
-                  ],
-                ),
+        return Container(
+          width: widget.isLarge ? widget.size * 1.3 : widget.size,
+          height: widget.isLarge ? widget.size * 1.3 : widget.size,
+          decoration: BoxDecoration(
+            color: widget.color ?? AppTheme.primaryColor,
+            borderRadius: BorderRadius.circular(widget.size / 4),
+            boxShadow: [
+              // Main shadow
+              BoxShadow(
+                color: (widget.color ?? AppTheme.primaryColor).withOpacity(0.4),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
               ),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(widget.size / 4),
-                  splashColor: Colors.white.withOpacity(0.2),
-                  highlightColor: Colors.white.withOpacity(0.1),
-                  onTap:
-                      widget
-                          .onPressed, // Use the onPressed callback here instead of empty function
-                  child: Center(
-                    child: Icon(
-                      widget.icon,
-                      color: Colors.white,
-                      size:
-                          widget.isLarge ? widget.size / 2 : widget.size / 2.5,
-                      shadows: const [
-                        Shadow(
-                          color: Colors.black26,
-                          blurRadius: 2,
-                          offset: Offset(0, 1),
-                        ),
-                      ],
-                    ),
+              // Glow effect if enabled
+              if (widget.isGlowing)
+                BoxShadow(
+                  color: (widget.color ?? AppTheme.primaryColor).withOpacity(
+                    0.3 * _glowAnimation.value,
                   ),
+                  blurRadius: 15 * _glowAnimation.value,
+                  spreadRadius: 1 * _glowAnimation.value,
+                ),
+            ],
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                (widget.color ?? AppTheme.primaryColor).withOpacity(1),
+                (widget.color ?? AppTheme.primaryColor).withOpacity(0.8),
+              ],
+            ),
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(widget.size / 4),
+              splashColor: Colors.white.withOpacity(0.2),
+              highlightColor: Colors.white.withOpacity(0.1),
+              onTap: widget.onPressed,
+              child: Center(
+                child: Icon(
+                  widget.icon,
+                  color: Colors.white,
+                  size: widget.isLarge ? widget.size / 2 : widget.size / 2.5,
+                  shadows: const [
+                    Shadow(
+                      color: Colors.black26,
+                      blurRadius: 2,
+                      offset: Offset(0, 1),
+                    ),
+                  ],
                 ),
               ),
             ),

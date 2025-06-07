@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "638208033117",
+    "firebase_url": "https://trash-detector-b0bd4-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "trash-detector-b0bd4",
+    "storage_bucket": "trash-detector-b0bd4.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:638208033117:android:b4e35b246c6f72959a68b4",
+        "android_client_info": {
+          "package_name": "com.example.mobile_v2"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD0mlxUy--XQpTWk00s8G356TByn96U6vc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

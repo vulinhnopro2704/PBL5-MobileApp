@@ -78,3 +78,17 @@ enum PowerCommand {
 String getSpeedCommand(int speed) {
   return 'SPEED_$speed';
 }
+
+/// Add Camera Command type if not already present
+enum CameraCommand { takePicture, detectObjects }
+
+extension CameraCommandExtension on CameraCommand {
+  String get value {
+    switch (this) {
+      case CameraCommand.takePicture:
+        return 'take_picture';
+      case CameraCommand.detectObjects:
+        return 'detect_objects';
+    }
+  }
+}

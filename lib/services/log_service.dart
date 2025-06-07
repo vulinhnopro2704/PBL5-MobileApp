@@ -21,10 +21,41 @@ class LogService {
     print('📱 LOG: $message');
   }
 
-  /// Log debug message
-  static void debug(String message) {
-    _logger.d(message);
-    if (kDebugMode) _consoleLog('DEBUG: $message');
+  /// Log debug message with any type of data
+  static void debug(String message, [dynamic data]) {
+    // Convert data to string representation for simpler logging
+    String dataStr = '';
+    if (data != null) {
+      if (data is Map) {
+        dataStr = data.entries
+            .map((e) => '${e.key}: ${_formatValue(e.value)}')
+            .join(', ');
+      } else if (data is List) {
+        dataStr = data.map((item) => _formatValue(item)).join(', ');
+      } else {
+        dataStr = _formatValue(data);
+      }
+    }
+
+    String logMessage = message;
+    if (dataStr.isNotEmpty) {
+      logMessage += ' | Data: $dataStr';
+    }
+
+    _logger.d(logMessage);
+    if (kDebugMode) _consoleLog('DEBUG: $logMessage');
+  }
+
+  // Helper to format values for logging
+  static String _formatValue(dynamic value) {
+    if (value == null) return 'null';
+    if (value is Map) {
+      return '{${value.entries.map((e) => '${e.key}: ${_formatValue(e.value)}').join(', ')}}';
+    }
+    if (value is List) {
+      return '[${value.map(_formatValue).join(', ')}]';
+    }
+    return value.toString();
   }
 
   /// Log info message

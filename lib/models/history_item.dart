@@ -36,6 +36,52 @@ class HistoryItem {
     );
   }
 
+  // Factory method for creating trash grab history item
+  static HistoryItem createTrashGrab({
+    required bool success,
+    String? imageUrl,
+    required String description,
+  }) {
+    return HistoryItem(
+      id: 'trash_grab_${DateTime.now().millisecondsSinceEpoch}',
+      timestamp: DateTime.now(),
+      eventType: HistoryEventType.trashGrabbed,
+      imageUrl: imageUrl,
+      description: description,
+      success: success,
+    );
+  }
+
+  // Factory method for creating image capture history item
+  static HistoryItem createImageCapture({
+    required String imageUrl,
+    required String description,
+  }) {
+    return HistoryItem(
+      id: 'image_capture_${DateTime.now().millisecondsSinceEpoch}',
+      timestamp: DateTime.now(),
+      eventType: HistoryEventType.imageCaptured,
+      imageUrl: imageUrl,
+      description: description,
+    );
+  }
+
+  // Factory method for creating object detection history item
+  static HistoryItem createObjectDetection({
+    String? imageUrl,
+    required Map<String, dynamic> detectionData,
+    required String description,
+  }) {
+    return HistoryItem(
+      id: 'object_detection_${DateTime.now().millisecondsSinceEpoch}',
+      timestamp: DateTime.now(),
+      eventType: HistoryEventType.objectDetected,
+      imageUrl: imageUrl,
+      description: description,
+      detectionData: detectionData,
+    );
+  }
+
   // Helper to parse event type from string
   static HistoryEventType _parseEventType(String eventType) {
     switch (eventType.toLowerCase()) {

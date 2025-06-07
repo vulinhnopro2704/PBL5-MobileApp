@@ -10,6 +10,9 @@ import 'config/app_theme.dart';
 import 'config/env_config.dart';
 import 'utils/network_utils.dart';
 
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
+
 Future<void> main() async {
   try {
     WidgetsFlutterBinding.ensureInitialized();
@@ -50,6 +53,7 @@ Future<void> main() async {
     LogService.error('Error during initialization', e);
   }
 
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   runApp(const MyApp());
 }
 

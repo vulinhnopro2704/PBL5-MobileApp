@@ -73,10 +73,7 @@ class FirebaseHistoryItem {
       if (detectionsData is List) {
         return detectionsData
             .whereType<Map<String, dynamic>>()
-            .map(
-              (detection) =>
-                  FirebaseDetection.fromMap(detection),
-            )
+            .map((detection) => FirebaseDetection.fromMap(detection))
             .toList();
       }
       return [];

@@ -298,7 +298,10 @@ class WebSocketService {
   }
 
   // Toggle auto mode
-  void toggleAutoMode() {
+  void toggleAutoMode() async {
+    if (_isAutoMode) {
+      await connect(); // Ensure connection before toggling
+    }
     _isAutoMode = !_isAutoMode;
     send({'isAutoMode': _isAutoMode});
     sendModeCommand(

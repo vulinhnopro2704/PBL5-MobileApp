@@ -21,7 +21,6 @@ class AppTheme {
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
-
   // Button Colors
   static const Color forwardButtonColor = Color(0xFF03A9F4);
   static const Color backwardButtonColor = Color(0xFF0288D1);
@@ -30,6 +29,8 @@ class AppTheme {
   static const Color rotateButtonColor = Color(0xFF9C27B0);
   static const Color grabButtonColor = Color(0xFFFF9800);
   static const Color stopButtonColor = Color(0xFFF44336);
+  static const Color resetBinButtonColor = Color(0xFF2196F3);
+  static const Color cleanBinButtonColor = Color(0xFF4CAF50);
 
   // Text Styles
   static TextStyle headingStyle = GoogleFonts.poppins(

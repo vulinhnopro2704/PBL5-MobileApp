@@ -240,6 +240,23 @@ class _ControlScreenState extends State<ControlScreen>
       return;
     }
 
+    // Handle special commands with confirmation
+    if (command == ActionCommand.resetBin.value) {
+      _showConfirmationDialog(
+        'Reset Bin',
+        'Are you sure you want to reset the bin to its original position?',
+        () => _webSocketService.resetBin(),
+      );
+      return;
+    } else if (command == ActionCommand.cleanBin.value) {
+      _showConfirmationDialog(
+        'Clean Bin',
+        'Mark all trash in the bin as collected?',
+        () => _webSocketService.cleanBin(),
+      );
+      return;
+    }
+
     // Check if this is a continuous command that requires holding
     if (command == DirectionCommand.forward.value ||
         command == DirectionCommand.backward.value ||
@@ -255,6 +272,72 @@ class _ControlScreenState extends State<ControlScreen>
 
     // Provide haptic feedback
     HapticFeedback.mediumImpact();
+  }
+
+  // Show confirmation dialog for important actions
+  void _showConfirmationDialog(
+    String title,
+    String message,
+    VoidCallback onConfirm,
+  ) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: AppTheme.surfaceDark,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Text(
+            title,
+            style: AppTheme.headingStyle.copyWith(fontSize: 18),
+          ),
+          content: Text(message, style: AppTheme.bodyStyle),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(
+                'Cancel',
+                style: AppTheme.buttonTextStyle.copyWith(color: Colors.grey),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                onConfirm();
+                HapticFeedback.mediumImpact();
+
+                // Show success message
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Row(
+                      children: [
+                        const Icon(Icons.check_circle, color: Colors.white),
+                        const SizedBox(width: 8),
+                        Text('$title command sent', style: AppTheme.bodyStyle),
+                      ],
+                    ),
+                    backgroundColor: AppTheme.connectedColor,
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.accentColor,
+                foregroundColor: Colors.black87,
+              ),
+              child: Text(
+                'Confirm',
+                style: AppTheme.buttonTextStyle.copyWith(color: Colors.black87),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> _captureImage() async {

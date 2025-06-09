@@ -23,7 +23,6 @@ class WebSocketService {
   factory WebSocketService() {
     return instance;
   }
-
   WebSocketChannel? _channel;
   bool _isConnected = false;
   int _reconnectAttempt = 0;
@@ -38,8 +37,7 @@ class WebSocketService {
   bool _isAutoMode = false;
   int _speed = 50;
   int _binStatus = 0;
-  String _currentMode = 'manual';
-
+  final String _currentMode = 'manual';
   // Getters
   Stream<dynamic> get messageStream => _messageController.stream;
   Stream<bool> get connectionStatusStream => _connectionStatusController.stream;
@@ -70,7 +68,7 @@ class WebSocketService {
 
         final String? resolvedIP = await NetworkUtils.resolveRaspberryPiLocal();
         if (resolvedIP == null) {
-          LogService.error('Failed to resolve Raspberry Pi IP address');
+          LogService.error('Failed to resolve Raspberry Pi address');
           _handleDisconnection();
           return false;
         }
@@ -88,56 +86,52 @@ class WebSocketService {
       final completer = Completer<bool>();
 
       // Set up a connection timeout
-      final timeoutTimer = Timer(const Duration(seconds: 10), () {
+      final timeoutTimer = Timer(const Duration(seconds: 5), () {
         if (!completer.isCompleted) {
-          completer.complete(false);
           LogService.error('WebSocket connection timeout');
+          completer.complete(false);
         }
       });
 
       _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
 
-      // Test the connection with a connect message
-      bool receivedResponse = false;
+      // Test the connection with a ping message
+      bool receivedPong = false;
 
       // Listen for messages
       _channel!.stream.listen(
         (message) {
-          if (!receivedResponse && !completer.isCompleted) {
-            receivedResponse = true;
-            completer.complete(true);
+          if (!receivedPong && !completer.isCompleted) {
+            receivedPong = true;
             timeoutTimer.cancel();
+            completer.complete(true);
           }
           _handleMessage(message);
-        },
-        onError: (error) {
-          LogService.error('WebSocket error', error);
-          if (!completer.isCompleted) {
-            completer.complete(false);
-            timeoutTimer.cancel();
-          }
-          _handleDisconnection();
         },
         onDone: () {
           LogService.info('WebSocket connection closed');
           if (!completer.isCompleted) {
             completer.complete(false);
-            timeoutTimer.cancel();
+          }
+          _handleDisconnection();
+        },
+        onError: (error) {
+          LogService.error('WebSocket error', error);
+          if (!completer.isCompleted) {
+            completer.complete(false);
           }
           _handleDisconnection();
         },
       );
 
-      // Send a connect command to verify connection and get robot state
+      // Send a ping to verify connection
       try {
-        final connectData = {'direction': 'connect', 'speed': _speed};
-        _channel!.sink.add(jsonEncode(connectData));
-        LogService.info('Sent connect command: $connectData');
+        _channel!.sink.add(jsonEncode({'ping': true}));
       } catch (e) {
-        LogService.error('Failed to send connect command', e);
+        LogService.error('Error sending ping', e);
         if (!completer.isCompleted) {
-          completer.complete(false);
           timeoutTimer.cancel();
+          completer.complete(false);
         }
       }
 
@@ -149,12 +143,12 @@ class WebSocketService {
       _connectionStatusController.add(_isConnected);
 
       if (connected) {
+        _reconnectAttempt = 0;
         LogService.info('Successfully connected to WebSocket server');
-        _reconnectAttempt =
-            0; // Reset reconnect attempts on successful connection
       } else {
         LogService.error('Failed to establish WebSocket connection');
-        _handleDisconnection();
+        _channel?.sink.close();
+        _channel = null;
       }
 
       return connected;
@@ -183,17 +177,11 @@ class WebSocketService {
     _connectionStatusController.add(false);
     LogService.info('Disconnected from WebSocket server');
 
-    // Only attempt reconnection if we haven't reached max attempts
-    if (_reconnectAttempt >= 5) {
-      LogService.error('Max reconnection attempts reached');
-      return;
-    }
-
     // Schedule reconnect with exponential backoff
     _reconnectAttempt++;
 
     // Calculate backoff delay with jitter
-    final baseDelay = 2000; // Start with 2 seconds
+    final baseDelay = 1000; // Start with 1 second
     final backoffFactor = 1.5;
     final maxReconnectDelay = 30000; // 30 seconds
 
@@ -202,12 +190,14 @@ class WebSocketService {
     final jitter = (DateTime.now().millisecondsSinceEpoch % 1000);
     final delay = (backoffDelay + jitter).clamp(0, maxReconnectDelay).toInt();
 
-    LogService.info(
-      'Attempting to reconnect in ${delay}ms ($_reconnectAttempt/5)',
-    );
+    LogService.info('Attempting to reconnect ($_reconnectAttempt/5)');
 
     _reconnectTimer = Timer(Duration(milliseconds: delay), () {
-      connect();
+      if (_reconnectAttempt <= 5) {
+        connect();
+      } else {
+        LogService.error('Max reconnection attempts reached');
+      }
     });
   }
 
@@ -223,16 +213,7 @@ class WebSocketService {
           _messageController.add(data);
 
           // Update robot state based on received data
-          if (data is Map<String, dynamic>) {
-            // Update mode from server response
-            if (data.containsKey('mode')) {
-              final serverMode = data['mode'] as String;
-              _currentMode = serverMode;
-              _isAutoMode = serverMode == 'auto';
-              LogService.info('Robot mode updated to: $serverMode');
-            }
-
-            // Update other robot states
+          if (data is Map) {
             if (data.containsKey('binStatus')) {
               _binStatus = data['binStatus'];
             }
@@ -252,23 +233,13 @@ class WebSocketService {
                 data.containsKey('direction') &&
                 data.containsKey('speed')) {
               _speed = data['speed'];
-            } // Log detailed response information
+            }
+
+            // Log detailed response information
             if (data.containsKey('status')) {
               final status = data['status'];
               final action = data['action'] ?? data['direction'] ?? 'unknown';
               LogService.info('Robot response: $status - $action');
-
-              // Handle specific bin-related responses
-              if (action == 'reset_bin' && status == 'success') {
-                _binStatus = 0; // Reset to original position
-                LogService.info('Bin successfully reset to original position');
-              } else if (action == 'clean_bin' && status == 'success') {
-                _binStatus = 0; // Reset bin status after cleaning
-                LogService.info('Bin marked as clean - all trash collected');
-              } else if (action == 'rotate_bin' && status == 'success') {
-                // You might want to update bin status based on rotation
-                LogService.info('Bin rotation completed');
-              }
             }
           }
         } catch (e) {
@@ -317,18 +288,12 @@ class WebSocketService {
 
   // Send a mode command
   void sendModeCommand(ModeCommand command) {
-    final commandValue = command.value;
-    LogService.info('Sending mode command: $commandValue');
-
     if (command == ModeCommand.autoMode) {
       _isAutoMode = true;
-      _currentMode = 'auto';
-      sendCommand('auto_mode');
     } else {
       _isAutoMode = false;
-      _currentMode = 'manual';
-      sendCommand('manual_mode');
     }
+    sendCommand(command.value);
   }
 
   // Send a power command
@@ -341,48 +306,22 @@ class WebSocketService {
     sendCommand(command.value);
   }
 
-  // Reset bin to original position
-  void resetBin() {
-    LogService.info('Resetting bin to original position');
-    sendActionCommand(ActionCommand.resetBin);
-
-    // Update bin status to indicate reset
-    _binStatus = 0; // 0 = original position
-  }
-
-  // Mark bin as clean (all trash collected)
-  void cleanBin() {
-    LogService.info('Marking bin as clean - all trash collected');
-    sendActionCommand(ActionCommand.cleanBin);
-
-    // Update bin status to indicate clean
-    _binStatus = 0; // Reset to 0 after cleaning
-  }
-
   // Set speed
   void setSpeed(int newSpeed) {
     _speed = newSpeed.clamp(0, 100);
     send({'speed': _speed});
-    LogService.info('Speed set to: $_speed%');
   }
 
-  // Toggle auto mode - improved version for settings screen
-  Future<void> toggleAutoMode() async {
-    // Ensure connection before toggling
-    if (!_isConnected) {
-      final connected = await connect();
-      if (!connected) {
-        LogService.error('Cannot toggle mode: Not connected to robot');
-        return;
-      }
+  // Toggle auto mode
+  void toggleAutoMode() async {
+    if (_isAutoMode) {
+      await connect(); // Ensure connection before toggling
     }
-
-    // Toggle mode and send command
-    final targetMode =
-        _isAutoMode ? ModeCommand.manualMode : ModeCommand.autoMode;
-    sendModeCommand(targetMode);
-
-    LogService.info('Mode toggle requested: ${targetMode.value}');
+    _isAutoMode = !_isAutoMode;
+    send({'isAutoMode': _isAutoMode});
+    sendModeCommand(
+      _isAutoMode ? ModeCommand.autoMode : ModeCommand.manualMode,
+    );
   }
 
   // Toggle power
@@ -394,33 +333,21 @@ class WebSocketService {
     );
   }
 
-  // Test connection with connect command
+  // Test connection
   Future<bool> testConnection() async {
-    try {
-      final wasConnected = _isConnected;
-      if (!wasConnected) {
-        LogService.info('Testing new connection...');
-        final result = await connect();
-        return result;
-      } else {
-        // Test existing connection with a connect command
-        LogService.info('Testing existing connection...');
-        final testData = {'direction': 'connect', 'speed': _speed};
-        send(testData);
+    final wasConnected = _isConnected;
+    if (!wasConnected) {
+      final result = await connect();
+      if (result) {
+        // Send a test message
+        send({'test': true});
         return true;
       }
-    } catch (e) {
-      LogService.error('Connection test failed', e);
       return false;
     }
-  }
-
-  // Force reconnection (useful for settings changes)
-  Future<bool> reconnect() async {
-    LogService.info('Force reconnecting...');
-    disconnect();
-    _reconnectAttempt = 0; // Reset reconnect attempts
-    return await connect();
+    // Already connected
+    send({'test': true});
+    return true;
   }
 
   // Dispose resources

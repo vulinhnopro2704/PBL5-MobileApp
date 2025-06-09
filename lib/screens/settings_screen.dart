@@ -44,7 +44,6 @@ class _SettingsScreenState extends State<SettingsScreen>
   bool _isLoading = false;
   bool _isAutoMode = false;
   bool _isPoweredOn = true;
-
   @override
   void initState() {
     super.initState();
@@ -56,10 +55,27 @@ class _SettingsScreenState extends State<SettingsScreen>
 
     // Listen for changes in robot state
     _wsService.connectionStatusStream.listen((isConnected) {
-      if (isConnected && mounted) {
+      if (mounted) {
         setState(() {
           _isAutoMode = _wsService.isAutoMode;
           _isPoweredOn = _wsService.isPoweredOn;
+        });
+      }
+    });
+
+    // Also listen for message stream to get robot state updates
+    _wsService.messageStream.listen((message) {
+      if (mounted && message is Map<String, dynamic>) {
+        setState(() {
+          if (message.containsKey('mode')) {
+            _isAutoMode = message['mode'] == 'auto';
+          }
+          if (message.containsKey('isAutoMode')) {
+            _isAutoMode = message['isAutoMode'];
+          }
+          if (message.containsKey('isPoweredOn')) {
+            _isPoweredOn = message['isPoweredOn'];
+          }
         });
       }
     });

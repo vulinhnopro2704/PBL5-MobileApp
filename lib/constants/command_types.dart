@@ -13,15 +13,15 @@ enum DirectionCommand {
   String get value {
     switch (this) {
       case DirectionCommand.forward:
-        return 'FORWARD';
+        return 'forward';
       case DirectionCommand.backward:
-        return 'BACKWARD';
+        return 'backward';
       case DirectionCommand.left:
-        return 'LEFT';
+        return 'left';
       case DirectionCommand.right:
-        return 'RIGHT';
+        return 'right';
       case DirectionCommand.stop:
-        return 'STOP';
+        return 'stop';
     }
   }
 }
@@ -30,16 +30,22 @@ enum DirectionCommand {
 enum ActionCommand {
   grabTrash,
   rotateBin,
-  takePicture;
+  takePicture,
+  resetBin,
+  cleanBin;
 
   String get value {
     switch (this) {
       case ActionCommand.grabTrash:
-        return 'GRAB_TRASH';
+        return 'grab_trash';
       case ActionCommand.rotateBin:
-        return 'ROTATE_BIN';
+        return 'rotate_bin';
       case ActionCommand.takePicture:
-        return 'TAKE_PICTURE';
+        return 'take_picture';
+      case ActionCommand.resetBin:
+        return 'reset_bin';
+      case ActionCommand.cleanBin:
+        return 'clean_bin';
     }
   }
 }
@@ -52,9 +58,9 @@ enum ModeCommand {
   String get value {
     switch (this) {
       case ModeCommand.autoMode:
-        return 'AUTO_MODE';
+        return 'auto_mode';
       case ModeCommand.manualMode:
-        return 'MANUAL_MODE';
+        return 'manual_mode';
     }
   }
 }
@@ -67,9 +73,9 @@ enum PowerCommand {
   String get value {
     switch (this) {
       case PowerCommand.powerOn:
-        return 'POWER_ON';
+        return 'power_on';
       case PowerCommand.powerOff:
-        return 'POWER_OFF';
+        return 'power_off';
     }
   }
 }

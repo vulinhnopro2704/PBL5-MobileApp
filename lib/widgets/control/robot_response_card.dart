@@ -50,8 +50,7 @@ class RobotResponseCard extends StatelessWidget {
     final direction = response['direction'] as String?;
     final message = response['message'] as String?;
     final speed = response['speed'] as int?;
-    final currentBin = response['current_bin'] as int?;
-
+    final currentBin = response['current_bin'] ?? '';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -122,7 +121,7 @@ class RobotResponseCard extends StatelessWidget {
             ),
           ),
         ],
-        if (currentBin != null) ...[
+        if (currentBin != null && currentBin.isNotEmpty) ...[
           const SizedBox(height: 4),
           RichText(
             text: TextSpan(

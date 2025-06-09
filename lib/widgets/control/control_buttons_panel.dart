@@ -87,11 +87,9 @@ class ControlButtonsPanel extends StatelessWidget {
               ],
             ),
 
-            const SizedBox(height: 20),
-
-            // Action buttons row
+            const SizedBox(height: 20), // Action buttons row
             Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 ControlButton(
                   icon: Icons.rotate_right,
@@ -99,7 +97,6 @@ class ControlButtonsPanel extends StatelessWidget {
                   onPressed: () => onSendCommand(ActionCommand.rotateBin.value),
                   color: AppTheme.rotateButtonColor,
                 ),
-                const SizedBox(width: 24),
                 ControlButton(
                   icon: Icons.pan_tool,
                   label: 'Grab Trash',
@@ -107,6 +104,27 @@ class ControlButtonsPanel extends StatelessWidget {
                   color: AppTheme.grabButtonColor,
                   isLarge: true,
                   isGlowing: true,
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 16),
+
+            // Additional action buttons row
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                ControlButton(
+                  icon: Icons.restart_alt,
+                  label: 'Reset Bin',
+                  onPressed: () => onSendCommand(ActionCommand.resetBin.value),
+                  color: AppTheme.resetBinButtonColor,
+                ),
+                ControlButton(
+                  icon: Icons.cleaning_services,
+                  label: 'Clean Bin',
+                  onPressed: () => onSendCommand(ActionCommand.cleanBin.value),
+                  color: AppTheme.cleanBinButtonColor,
                 ),
               ],
             ),

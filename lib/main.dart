@@ -1,6 +1,8 @@
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:mobile_v2/services/notification_service.dart';
 
 import 'screens/control_screen.dart';
 import 'screens/settings_screen.dart';
@@ -54,6 +56,10 @@ Future<void> main() async {
   }
 
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  NotificationService.initializeNotification();
+  FirebaseMessaging.onBackgroundMessage(
+    NotificationService.firebaseMessagingBackgroundHandler,
+  );
   runApp(const MyApp());
 }
 

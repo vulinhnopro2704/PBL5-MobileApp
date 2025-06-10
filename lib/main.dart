@@ -7,6 +7,7 @@ import 'package:mobile_v2/services/notification_service.dart';
 import 'screens/control_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/history_screen.dart';
+import 'screens/trash_bin_screen.dart';
 import 'services/log_service.dart';
 import 'config/app_theme.dart';
 import 'config/env_config.dart';
@@ -91,22 +92,35 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
+  final PageController _pageController = PageController();
 
   final List<Widget> _screens = [
     const ControlScreen(),
+    const TrashBinScreen(),
     const HistoryScreen(),
     const SettingsScreen(),
   ];
 
   @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: _screens[_currentIndex],
+      body: PageView(
+        controller: _pageController,
+        physics: const NeverScrollableScrollPhysics(), // Disable swiping
+        children: _screens,
+      ),
       bottomNavigationBar: NavigationBar(
         onDestinationSelected: (index) {
           setState(() {
             _currentIndex = index;
           });
+          _pageController.jumpToPage(index);
         },
         selectedIndex: _currentIndex,
         backgroundColor: AppTheme.surfaceDark,
@@ -115,6 +129,11 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: Icon(Icons.gamepad_outlined),
             selectedIcon: Icon(Icons.gamepad),
             label: 'Control',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.delete_outline),
+            selectedIcon: Icon(Icons.delete),
+            label: 'Trash Bin',
           ),
           NavigationDestination(
             icon: Icon(Icons.history_outlined),

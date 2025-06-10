@@ -26,8 +26,9 @@ class WebSocketService {
 
   WebSocketChannel? _channel;
   bool _isConnected = false;
-  int _reconnectAttempt = 0;
   Timer? _reconnectTimer;
+  bool _isDisposed = false;
+  int _reconnectAttempt = 0;
 
   // Stream controllers
   final _messageController = BehaviorSubject<dynamic>();
@@ -167,48 +168,36 @@ class WebSocketService {
 
   // Disconnect from WebSocket server
   void disconnect() {
-    _reconnectTimer?.cancel();
+    LogService.info('Disconnecting WebSocket...');
+
     if (_channel != null) {
-      _channel!.sink.close();
+      try {
+        _channel!.sink.close();
+      } catch (e) {
+        LogService.warning('Error closing WebSocket channel: $e');
+      }
       _channel = null;
     }
+
+    // Only add to stream if not disposed and stream is not closed
+    if (!_isDisposed && !_connectionStatusController.isClosed) {
+      _connectionStatusController.add(false);
+    }
+
     _isConnected = false;
-    _connectionStatusController.add(false);
-    LogService.info('Disconnected from WebSocket server');
+    LogService.info('WebSocket disconnected');
   }
 
   // Handle reconnection on disconnect
   void _handleDisconnection() {
+    LogService.warning('WebSocket connection lost');
     _isConnected = false;
-    _connectionStatusController.add(false);
-    LogService.info('Disconnected from WebSocket server');
+    _channel = null;
 
-    // Only attempt reconnection if we haven't reached max attempts
-    if (_reconnectAttempt >= 5) {
-      LogService.error('Max reconnection attempts reached');
-      return;
+    // Only add to stream if not disposed and stream is not closed
+    if (!_isDisposed && !_connectionStatusController.isClosed) {
+      _connectionStatusController.add(false);
     }
-
-    // Schedule reconnect with exponential backoff
-    _reconnectAttempt++;
-
-    // Calculate backoff delay with jitter
-    final baseDelay = 2000; // Start with 2 seconds
-    final backoffFactor = 1.5;
-    final maxReconnectDelay = 30000; // 30 seconds
-
-    // Calculate delay: base * (1.5 ^ attempt) + random jitter
-    final backoffDelay = baseDelay * (backoffFactor * _reconnectAttempt);
-    final jitter = (DateTime.now().millisecondsSinceEpoch % 1000);
-    final delay = (backoffDelay + jitter).clamp(0, maxReconnectDelay).toInt();
-
-    LogService.info(
-      'Attempting to reconnect in ${delay}ms ($_reconnectAttempt/5)',
-    );
-
-    _reconnectTimer = Timer(Duration(milliseconds: delay), () {
-      connect();
-    });
   }
 
   // Handle incoming WebSocket messages
@@ -425,9 +414,19 @@ class WebSocketService {
 
   // Dispose resources
   void dispose() {
-    _reconnectTimer?.cancel();
+    LogService.info('Disposing WebSocketService...');
+    _isDisposed = true;
+
     disconnect();
-    _messageController.close();
-    _connectionStatusController.close();
+
+    // Close stream controllers safely
+    if (!_messageController.isClosed) {
+      _messageController.close();
+    }
+    if (!_connectionStatusController.isClosed) {
+      _connectionStatusController.close();
+    }
+
+    LogService.info('WebSocketService disposed');
   }
 }

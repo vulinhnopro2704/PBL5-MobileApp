@@ -87,7 +87,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     _wsPortController.dispose();
     _aiServerHostController.dispose();
     _aiServerPortController.dispose();
-    _wsService.dispose();
+    // _wsService.dispose();
     super.dispose();
   }
 

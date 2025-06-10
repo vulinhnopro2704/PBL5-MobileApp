@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:mobile_v2/config/env_config.dart';
 
 import '../services/websocket_service.dart';
 import '../services/log_service.dart';
@@ -49,6 +50,9 @@ class _ControlScreenState extends State<ControlScreen>
   // Add this new property to store the latest response from the robot
   Map<String, dynamic>? _lastRobotResponse;
   Timer? _responseDisplayTimer;
+
+  Timer? _continuousCommandTimer;
+  bool _isDisposed = false;
 
   @override
   void initState() {
@@ -104,10 +108,25 @@ class _ControlScreenState extends State<ControlScreen>
             });
           }
         });
+
+    // Auto-connect timer with proper lifecycle check
+    _continuousCommandTimer = Timer.periodic(const Duration(seconds: 5), (
+      timer,
+    ) {
+      if (_isDisposed || !mounted) {
+        timer.cancel();
+        return;
+      }
+
+      if (_status == 'Disconnected' && EnvConfig.isInitialized) {
+        _connectWebSocket();
+      }
+    });
   }
 
   @override
   void dispose() {
+    _isDisposed = true;
     // Cancel stream subscriptions
     _messageSubscription?.cancel();
     _connectionStatusSubscription?.cancel();
@@ -116,6 +135,7 @@ class _ControlScreenState extends State<ControlScreen>
     _connectionAnimController.dispose();
     _stopContinuousCommand();
     _responseDisplayTimer?.cancel();
+    _continuousCommandTimer?.cancel();
     super.dispose();
   }
 
@@ -125,10 +145,12 @@ class _ControlScreenState extends State<ControlScreen>
     _commandTimer?.cancel();
     _commandTimer = null;
 
-    // Reset command state
-    setState(() {
-      _activeCommand = null;
-    });
+    // Only call setState if widget is still mounted and not disposed
+    if (mounted && !_isDisposed) {
+      setState(() {
+        _activeCommand = null;
+      });
+    }
 
     // Send stop command to robot if needed
     if (_webSocketService.isConnected) {
@@ -137,6 +159,8 @@ class _ControlScreenState extends State<ControlScreen>
   }
 
   Future<void> _connectWebSocket() async {
+    if (_isDisposed || !mounted) return;
+
     setState(() {
       _isConnecting = true;
       _status = 'Connecting...';

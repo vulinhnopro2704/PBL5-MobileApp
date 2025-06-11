@@ -7,6 +7,7 @@ import '../config/env_config.dart';
 import '../constants/command_types.dart';
 import '../utils/network_utils.dart';
 import 'log_service.dart';
+import 'firebase_service.dart'; // Add this import
 
 class WebSocketService {
   // Singleton instance
@@ -333,15 +334,21 @@ class WebSocketService {
     LogService.info('Sending mode command: $commandValue');
 
     // Update local state before sending the command
+    String firebaseMode;
     if (command == ModeCommand.autoMode) {
       _isAutoMode = true;
       _currentMode = 'auto';
+      firebaseMode = 'auto';
       sendCommand('auto_mode');
     } else {
       _isAutoMode = false;
       _currentMode = 'manual';
+      firebaseMode = 'manual';
       sendCommand('manual_mode');
     }
+
+    // Update Firebase with the new mode
+    FirebaseService().updateRobotMode(firebaseMode);
 
     // Notify listeners about the mode change via the message controller
     _messageController.add({
@@ -354,13 +361,13 @@ class WebSocketService {
   // Toggle auto mode - improved version that works more reliably
   Future<void> toggleAutoMode() async {
     // Ensure connection before toggling
-    if (!_isConnected) {
-      final connected = await connect();
-      if (!connected) {
-        LogService.error('Cannot toggle mode: Not connected to robot');
-        return;
-      }
-    }
+    // if (!_isConnected) {
+    //   final connected = await connect();
+    //   if (!connected) {
+    //     LogService.error('Cannot toggle mode: Not connected to robot');
+    //     return;
+    //   }
+    // }
 
     // Determine the target mode based on the current state
     final bool currentAutoMode = _isAutoMode;

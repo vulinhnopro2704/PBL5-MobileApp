@@ -213,35 +213,38 @@ class RobotResponseCard extends StatelessWidget {
   Color _getResponseStatusColor(Map<String, dynamic> response) {
     final status = response['status'] as String?;
 
-    if (status == null) return Colors.grey;
+    // if (status == null) return Colors.grey;
 
-    switch (status.toLowerCase()) {
-      case 'success':
-        return Colors.green;
-      case 'error':
-        return Colors.red;
-      case 'warning':
-        return Colors.orange;
-      default:
-        return Colors.blue;
-    }
+    // switch (status.toLowerCase()) {
+    //   case 'success':
+    //     return Colors.green;
+    //   case 'error':
+    //     return Colors.red;
+    //   case 'warning':
+    //     return Colors.orange;
+    //   default:
+    //     return Colors.blue;
+    // }
+
+    return Colors.blue; // Default color for unknown status
   }
 
   // Helper method to get response status icon
   IconData _getResponseStatusIcon(Map<String, dynamic> response) {
-    final status = response['status'] as String?;
+    // final status = response['status'] as String?;
 
-    if (status == null) return Icons.info_outline;
+    // if (status == null) return Icons.info_outline;
 
-    switch (status.toLowerCase()) {
-      case 'success':
-        return Icons.check_circle_outline;
-      case 'error':
-        return Icons.error_outline;
-      case 'warning':
-        return Icons.warning_amber_outlined;
-      default:
-        return Icons.info_outline;
-    }
+    // switch (status.toLowerCase()) {
+    //   case 'success':
+    //     return Icons.check_circle_outline;
+    //   case 'error':
+    //     return Icons.error_outline;
+    //   case 'warning':
+    //     return Icons.warning_amber_outlined;
+    //   default:
+    //     return Icons.info_outline;
+    // }
+    return Icons.info_outline; // Default icon for unknown status
   }
 }

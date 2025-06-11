@@ -7,6 +7,7 @@ import '../config/app_theme.dart';
 import '../services/ai_service.dart';
 import '../services/log_service.dart';
 import '../services/websocket_service.dart';
+import '../services/firebase_service.dart'; // Add this import
 
 // Import custom widgets
 import '../widgets/setting/setting_card.dart';

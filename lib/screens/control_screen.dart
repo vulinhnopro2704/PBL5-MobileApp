@@ -230,23 +230,23 @@ class _ControlScreenState extends State<ControlScreen>
           _isConnecting = false;
         });
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.error_outline, color: Colors.white),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Error toggling mode: ${e.toString()}',
-                    style: AppTheme.bodyStyle,
-                  ),
-                ),
-              ],
-            ),
-            backgroundColor: AppTheme.errorColor,
-          ),
-        );
+        // ScaffoldMessenger.of(context).showSnackBar(
+        //   SnackBar(
+        //     content: Row(
+        //       children: [
+        //         const Icon(Icons.error_outline, color: Colors.white),
+        //         const SizedBox(width: 8),
+        //         Expanded(
+        //           child: Text(
+        //             'Error toggling mode: ${e.toString()}',
+        //             style: AppTheme.bodyStyle,
+        //           ),
+        //         ),
+        //       ],
+        //     ),
+        //     backgroundColor: AppTheme.errorColor,
+        //   ),
+        // );
       }
     }
   }
@@ -284,24 +284,24 @@ class _ControlScreenState extends State<ControlScreen>
             _isPoweredOn = _webSocketService.isPoweredOn;
           } else {
             _connectionAnimController.reset();
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Row(
-                  children: [
-                    const Icon(Icons.error_outline, color: Colors.white),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Could not connect to the robot. Please check if the robot is powered on and connected to the network.',
-                        style: AppTheme.bodyStyle,
-                      ),
-                    ),
-                  ],
-                ),
-                backgroundColor: AppTheme.errorColor,
-                duration: const Duration(seconds: 5),
-              ),
-            );
+            // ScaffoldMessenger.of(context).showSnackBar(
+            //   SnackBar(
+            //     content: Row(
+            //       children: [
+            //         const Icon(Icons.error_outline, color: Colors.white),
+            //         const SizedBox(width: 8),
+            //         Expanded(
+            //           child: Text(
+            //             'Could not connect to the robot. Please check if the robot is powered on and connected to the network.',
+            //             style: AppTheme.bodyStyle,
+            //           ),
+            //         ),
+            //       ],
+            //     ),
+            //     backgroundColor: AppTheme.errorColor,
+            //     duration: const Duration(seconds: 5),
+            //   ),
+            // );
           }
         });
       }
@@ -545,12 +545,12 @@ class _ControlScreenState extends State<ControlScreen>
         if (imageUrl != null) {
           _showCamera = true; // Show camera panel when image is captured
         } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Failed to capture image or no image returned'),
-              backgroundColor: Colors.orange,
-            ),
-          );
+          // ScaffoldMessenger.of(context).showSnackBar(
+          //   const SnackBar(
+          //     content: Text('Failed to capture image or no image returned'),
+          //     backgroundColor: Colors.orange,
+          //   ),
+          // );
         }
       });
     } catch (e) {
@@ -563,12 +563,12 @@ class _ControlScreenState extends State<ControlScreen>
         _isCameraLoading = false;
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error capturing image: ${e.toString()}'),
-          backgroundColor: AppTheme.errorColor,
-        ),
-      );
+      // ScaffoldMessenger.of(context).showSnackBar(
+      //   SnackBar(
+      //     content: Text('Error capturing image: ${e.toString()}'),
+      //     backgroundColor: AppTheme.errorColor,
+      //   ),
+      // );
     }
   }
 

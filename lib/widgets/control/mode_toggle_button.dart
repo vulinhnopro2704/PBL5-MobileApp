@@ -51,15 +51,15 @@ class ModeToggleButton extends StatelessWidget {
             activeTrackColor: AppTheme.accentColor.withOpacity(0.5),
             onChanged: (_) => onModeToggle(),
           ),
-          const SizedBox(width: 8),
-          IconButton(
-            icon: Icon(
-              isPoweredOn ? Icons.power_settings_new : Icons.power_off,
-              color: isPoweredOn ? Colors.green : Colors.red,
-            ),
-            onPressed: onPowerToggle,
-            tooltip: isPoweredOn ? 'Power Off' : 'Power On',
-          ),
+          // const SizedBox(width: 8),
+          // IconButton(
+          //   icon: Icon(
+          //     isPoweredOn ? Icons.power_settings_new : Icons.power_off,
+          //     color: isPoweredOn ? Colors.green : Colors.red,
+          //   ),
+          //   onPressed: onPowerToggle,
+          //   tooltip: isPoweredOn ? 'Power Off' : 'Power On',
+          // ),
         ],
       ),
     );

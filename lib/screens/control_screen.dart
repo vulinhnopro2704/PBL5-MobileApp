@@ -15,6 +15,7 @@ import '../widgets/control/robot_response_card.dart';
 import '../widgets/control/camera_panel.dart';
 import '../widgets/control/control_buttons_panel.dart';
 import '../widgets/control/simple_grab_button.dart';
+import '../widgets/control/mode_toggle_button.dart'; // Add this import
 
 class ControlScreen extends StatefulWidget {
   const ControlScreen({super.key});
@@ -54,6 +55,10 @@ class _ControlScreenState extends State<ControlScreen>
   Timer? _continuousCommandTimer;
   bool _isDisposed = false;
 
+  // Robot state
+  bool _isPoweredOn = true;
+  bool _isAutoMode = false;
+
   @override
   void initState() {
     super.initState();
@@ -61,6 +66,10 @@ class _ControlScreenState extends State<ControlScreen>
       vsync: this,
       duration: const Duration(seconds: 2),
     );
+
+    // Initialize robot state
+    _isPoweredOn = _webSocketService.isPoweredOn;
+    _isAutoMode = _webSocketService.isAutoMode;
 
     _connectWebSocket();
 
@@ -74,6 +83,17 @@ class _ControlScreenState extends State<ControlScreen>
           // Store the latest response
           if (message is Map<String, dynamic>) {
             _lastRobotResponse = message;
+
+            // Update robot state based on message
+            if (message.containsKey('mode')) {
+              _isAutoMode = message['mode'] == 'auto';
+            }
+            if (message.containsKey('isAutoMode')) {
+              _isAutoMode = message['isAutoMode'];
+            }
+            if (message.containsKey('isPoweredOn')) {
+              _isPoweredOn = message['isPoweredOn'];
+            }
 
             // Clear the response after a few seconds
             _responseDisplayTimer?.cancel();
@@ -101,6 +121,10 @@ class _ControlScreenState extends State<ControlScreen>
                 _status = 'Connected';
                 _isConnecting = false;
                 _connectionAnimController.stop();
+
+                // Update robot state from service when connection is established
+                _isAutoMode = _webSocketService.isAutoMode;
+                _isPoweredOn = _webSocketService.isPoweredOn;
               } else {
                 _status = 'Disconnected';
                 _stopContinuousCommand();
@@ -131,7 +155,6 @@ class _ControlScreenState extends State<ControlScreen>
     _messageSubscription?.cancel();
     _connectionStatusSubscription?.cancel();
 
-    _webSocketService.dispose();
     _connectionAnimController.dispose();
     _stopContinuousCommand();
     _responseDisplayTimer?.cancel();
@@ -158,6 +181,84 @@ class _ControlScreenState extends State<ControlScreen>
     }
   }
 
+  // Toggle auto mode function
+  Future<void> _toggleAutoMode() async {
+    // Show the loading indicator
+    setState(() {
+      _isConnecting = true;
+    });
+
+    try {
+      // Call the service method to toggle mode
+      await _webSocketService.toggleAutoMode();
+
+      // Update state based on the service's state after toggle
+      if (mounted) {
+        setState(() {
+          _isAutoMode = _webSocketService.isAutoMode;
+          _isConnecting = false;
+        });
+      }
+
+      // Show a feedback message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white),
+                const SizedBox(width: 8),
+                Text(
+                  'Switched to ${_isAutoMode ? "Auto" : "Manual"} Mode',
+                  style: AppTheme.bodyStyle,
+                ),
+              ],
+            ),
+            backgroundColor: AppTheme.connectedColor,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      LogService.error('Error toggling mode', e);
+
+      if (mounted) {
+        setState(() {
+          _isConnecting = false;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error_outline, color: Colors.white),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Error toggling mode: ${e.toString()}',
+                    style: AppTheme.bodyStyle,
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: AppTheme.errorColor,
+          ),
+        );
+      }
+    }
+  }
+
+  // Toggle power function
+  void _togglePower() {
+    _webSocketService.togglePower();
+    setState(() {
+      _isPoweredOn = !_isPoweredOn;
+    });
+  }
+
   Future<void> _connectWebSocket() async {
     if (_isDisposed || !mounted) return;
 
@@ -168,6 +269,8 @@ class _ControlScreenState extends State<ControlScreen>
     });
 
     try {
+      // Use connect instead of reconnect for first connection,
+      // only use reconnect for explicit reconnection requests
       final bool connected = await _webSocketService.connect();
 
       if (mounted) {
@@ -176,6 +279,9 @@ class _ControlScreenState extends State<ControlScreen>
           _status = connected ? 'Connected' : 'Connection failed';
           if (connected) {
             _connectionAnimController.stop();
+            // Update robot state from service when connection is established
+            _isAutoMode = _webSocketService.isAutoMode;
+            _isPoweredOn = _webSocketService.isPoweredOn;
           } else {
             _connectionAnimController.reset();
             ScaffoldMessenger.of(context).showSnackBar(
@@ -523,6 +629,16 @@ class _ControlScreenState extends State<ControlScreen>
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
+          // Add mode toggle button to appbar
+          IconButton(
+            icon: Icon(
+              _isAutoMode ? Icons.auto_mode : Icons.handyman,
+              color: _isAutoMode ? AppTheme.accentColor : Colors.white,
+            ),
+            tooltip:
+                _isAutoMode ? 'Switch to Manual Mode' : 'Switch to Auto Mode',
+            onPressed: _isConnecting ? null : _toggleAutoMode,
+          ),
           // Camera toggle button
           IconButton(
             icon: Icon(
@@ -554,8 +670,23 @@ class _ControlScreenState extends State<ControlScreen>
                   isConnected: _webSocketService.isConnected,
                   isConnecting: _isConnecting,
                   status: _status,
-                  onReconnect: _connectWebSocket,
+                  onReconnect: () async {
+                    // Use reconnect explicitly when button is pressed
+                    await _webSocketService.reconnect();
+                    _connectWebSocket();
+                  },
                 ),
+
+                // Mode toggle display
+                if (!_showCamera) ...[
+                  const SizedBox(height: 8),
+                  ModeToggleButton(
+                    isAutoMode: _isAutoMode,
+                    isPoweredOn: _isPoweredOn,
+                    onModeToggle: _toggleAutoMode,
+                    onPowerToggle: _togglePower,
+                  ),
+                ],
 
                 // Add Robot Response Card if there's a response
                 if (_lastRobotResponse != null) ...[

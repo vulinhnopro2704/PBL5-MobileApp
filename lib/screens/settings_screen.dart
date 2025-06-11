@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'dart:async';
 
 import '../config/env_config.dart';
 import '../config/app_theme.dart';
@@ -44,6 +45,11 @@ class _SettingsScreenState extends State<SettingsScreen>
   bool _isLoading = false;
   bool _isAutoMode = false;
   bool _isPoweredOn = true;
+
+  // Stream subscriptions
+  StreamSubscription? _connectionStatusSubscription;
+  StreamSubscription? _messageSubscription;
+
   @override
   void initState() {
     super.initState();
@@ -54,7 +60,9 @@ class _SettingsScreenState extends State<SettingsScreen>
     _isPoweredOn = _wsService.isPoweredOn;
 
     // Listen for changes in robot state
-    _wsService.connectionStatusStream.listen((isConnected) {
+    _connectionStatusSubscription = _wsService.connectionStatusStream.listen((
+      isConnected,
+    ) {
       if (mounted) {
         setState(() {
           _isAutoMode = _wsService.isAutoMode;
@@ -64,7 +72,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     });
 
     // Also listen for message stream to get robot state updates
-    _wsService.messageStream.listen((message) {
+    _messageSubscription = _wsService.messageStream.listen((message) {
       if (mounted && message is Map<String, dynamic>) {
         setState(() {
           if (message.containsKey('mode')) {
@@ -83,11 +91,14 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   @override
   void dispose() {
+    // Cancel stream subscriptions to prevent memory leaks
+    _connectionStatusSubscription?.cancel();
+    _messageSubscription?.cancel();
+
     _wsHostController.dispose();
     _wsPortController.dispose();
     _aiServerHostController.dispose();
     _aiServerPortController.dispose();
-    // _wsService.dispose();
     super.dispose();
   }
 
@@ -263,16 +274,12 @@ class _SettingsScreenState extends State<SettingsScreen>
                                 isPoweredOn: _isPoweredOn,
                                 isAutoMode: _isAutoMode,
                                 onPowerToggle: (value) {
-                                  setState(() {
-                                    _isPoweredOn = value;
-                                  });
                                   _wsService.togglePower();
+                                  // State will be updated via messageStream
                                 },
                                 onModeToggle: (value) {
-                                  setState(() {
-                                    _isAutoMode = value;
-                                  });
                                   _wsService.toggleAutoMode();
+                                  // State will be updated via messageStream
                                 },
                               ),
                             ),

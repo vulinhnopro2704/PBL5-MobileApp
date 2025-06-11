@@ -53,9 +53,18 @@ class WebSocketService {
 
   // Connect to WebSocket server
   Future<bool> connect() async {
-    if (_isConnected) {
+    if (_isConnected && _channel != null) {
       LogService.info('Already connected to WebSocket server');
-      return true;
+      // Let's verify the connection is actually alive
+      try {
+        final connectData = {'direction': 'connect', 'speed': _speed};
+        _channel!.sink.add(jsonEncode(connectData));
+        LogService.info('Sent connection verification command');
+        return true;
+      } catch (e) {
+        LogService.warning('Connection verification failed, reconnecting...');
+        disconnect(); // Force disconnect to reconnect properly
+      }
     }
 
     // Clear any existing reconnect timer
@@ -244,7 +253,7 @@ class WebSocketService {
             } // Log detailed response information
             if (data.containsKey('status')) {
               final status = data['status'];
-              final action = data['action'] ?? data['direction'] ?? 'unknown';
+              final action = data['direction'] ?? 'unknown';
               LogService.info('Robot response: $status - $action');
 
               // Handle specific bin-related responses
@@ -289,9 +298,23 @@ class WebSocketService {
 
   // Send a command with the current speed
   void sendCommand(String command) {
-    final data = {'direction': command, 'speed': _speed};
-    LogService.info('Sending WS command: $data');
-    send(data);
+    if (_isConnected && _channel != null) {
+      try {
+        // Make sure we're not sending an empty direction
+        if (command.isEmpty) {
+          LogService.warning('Attempted to send empty command, ignoring');
+          return;
+        }
+
+        final data = {'direction': command, 'speed': _speed};
+        LogService.info('Sending WS command: $data');
+        send(data);
+      } catch (e) {
+        LogService.error('Error sending WebSocket command', e);
+      }
+    } else {
+      LogService.error('Cannot send command: WebSocket not connected');
+    }
   }
 
   // Send a direction command
@@ -309,6 +332,7 @@ class WebSocketService {
     final commandValue = command.value;
     LogService.info('Sending mode command: $commandValue');
 
+    // Update local state before sending the command
     if (command == ModeCommand.autoMode) {
       _isAutoMode = true;
       _currentMode = 'auto';
@@ -318,6 +342,39 @@ class WebSocketService {
       _currentMode = 'manual';
       sendCommand('manual_mode');
     }
+
+    // Notify listeners about the mode change via the message controller
+    _messageController.add({
+      'status': 'local_update',
+      'mode': _currentMode,
+      'isAutoMode': _isAutoMode,
+    });
+  }
+
+  // Toggle auto mode - improved version that works more reliably
+  Future<void> toggleAutoMode() async {
+    // Ensure connection before toggling
+    if (!_isConnected) {
+      final connected = await connect();
+      if (!connected) {
+        LogService.error('Cannot toggle mode: Not connected to robot');
+        return;
+      }
+    }
+
+    // Determine the target mode based on the current state
+    final bool currentAutoMode = _isAutoMode;
+    final targetMode =
+        currentAutoMode ? ModeCommand.manualMode : ModeCommand.autoMode;
+
+    LogService.info(
+      'Toggling mode from ${currentAutoMode ? "auto" : "manual"} to ${!currentAutoMode ? "auto" : "manual"}',
+    );
+
+    // Send the command to change mode
+    sendModeCommand(targetMode);
+
+    LogService.info('Mode toggle requested: ${targetMode.value}');
   }
 
   // Send a power command
@@ -355,25 +412,6 @@ class WebSocketService {
     LogService.info('Speed set to: $_speed%');
   }
 
-  // Toggle auto mode - improved version for settings screen
-  Future<void> toggleAutoMode() async {
-    // Ensure connection before toggling
-    if (!_isConnected) {
-      final connected = await connect();
-      if (!connected) {
-        LogService.error('Cannot toggle mode: Not connected to robot');
-        return;
-      }
-    }
-
-    // Toggle mode and send command
-    final targetMode =
-        _isAutoMode ? ModeCommand.manualMode : ModeCommand.autoMode;
-    sendModeCommand(targetMode);
-
-    LogService.info('Mode toggle requested: ${targetMode.value}');
-  }
-
   // Toggle power
   void togglePower() {
     _isPoweredOn = !_isPoweredOn;
@@ -404,15 +442,21 @@ class WebSocketService {
     }
   }
 
-  // Force reconnection (useful for settings changes)
+  // Reconnect method with improved debugging
   Future<bool> reconnect() async {
-    LogService.info('Force reconnecting...');
+    LogService.info('Force reconnecting WebSocket...');
     disconnect();
     _reconnectAttempt = 0; // Reset reconnect attempts
-    return await connect();
+
+    // Ensure we wait a bit before reconnecting to allow previous connection to fully close
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    final result = await connect();
+    LogService.info('Reconnection result: ${result ? "Connected" : "Failed"}');
+    return result;
   }
 
-  // Dispose resources
+  // Dispose resources - modified to be safer for singleton pattern
   void dispose() {
     LogService.info('Disposing WebSocketService...');
     _isDisposed = true;
@@ -426,6 +470,9 @@ class WebSocketService {
     if (!_connectionStatusController.isClosed) {
       _connectionStatusController.close();
     }
+
+    // Don't reset _instance in singleton since we want to keep reference
+    // _instance = null;
 
     LogService.info('WebSocketService disposed');
   }

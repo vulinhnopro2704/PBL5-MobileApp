@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -76,6 +77,21 @@ class NotificationService {
     String? token = await _firebaseMessaging.getToken();
     if (token != null) {
       LogService.info("FCM Token: $token");
+
+      // Save token to Firestore with a fixed document ID
+      try {
+        await FirebaseFirestore.instance
+            .collection('fcm_tokens')
+            .doc('user_token') // Fixed document ID since there's only one user
+            .set({
+              'token': token,
+              'updated_at': FieldValue.serverTimestamp(),
+              'device_info': 'mobile_app',
+            });
+        LogService.info("FCM Token saved to Firestore");
+      } catch (e) {
+        LogService.error("Failed to save FCM token to Firestore: $e");
+      }
     } else {
       LogService.error("Failed to get FCM token");
     }

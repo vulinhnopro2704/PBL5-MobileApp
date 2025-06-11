@@ -59,7 +59,8 @@ class ConnectionStatusCard extends StatelessWidget {
               style: AppTheme.buttonTextStyle,
             ),
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primaryColor,
+              backgroundColor:
+                  isConnected ? Colors.grey : AppTheme.primaryColor,
               disabledBackgroundColor: AppTheme.primaryColor.withOpacity(0.6),
             ),
           ),
